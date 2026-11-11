@@ -1,0 +1,46 @@
+# Disable directory browsing
+Options -Indexes
+
+# Set default directory index to dashboard.php
+DirectoryIndex dashboard.php
+
+# Protect sensitive files in user folder
+<FilesMatch "^(\.env|config\.php|\.htaccess|.*\.ini|.*\.log|.*\.json|.*\.lock)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # 1. Redirect legacy/alias URLs to clean dashboard
+    RewriteRule ^inbox/?$ dashboard [R=301,L]
+    RewriteRule ^sheetdata/?$ dashboard [R=301,L]
+    RewriteRule ^index(\.php)?$ ./ [R=301,L]
+
+    # 2. Redirect userlogin or userlogin.php to clean /login
+    RewriteRule ^userlogin/?$ login [R=301,L]
+    RewriteRule ^userlogin\.php$ login [R=301,L]
+
+    # 3. Strip .php extension on direct GET requests (e.g. /user/dashboard.php -> /user/dashboard)
+    RewriteCond %{REQUEST_METHOD} !POST
+    RewriteCond %{THE_REQUEST} ^[A-Z]{3,9}\ (.*?)/([^/\ ]+)\.php(\?[^\ ]*)?\ HTTP/ [NC]
+    RewriteRule ^ %1/%2 [R=301,L,NE]
+
+    # 4. Clean URL routing
+    RewriteRule ^login/?$ userlogin.php [L,QSA]
+    RewriteRule ^dashboard/?$ dashboard.php [L,QSA]
+    RewriteRule ^sheets/?$ sheets.php [L,QSA]
+    RewriteRule ^booking/?$ booking.php [L,QSA]
+
+    # Fallback: internally map clean URL to .php file
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME}.php -f
+    RewriteRule ^(.*)$ $1.php [L,QSA]
+</IfModule>

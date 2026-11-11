@@ -1,0 +1,11 @@
+{
+    "enabled": false,
+    "target_month": "10",
+    "target_year": "26",
+    "center_code": "474",
+    "auto_disable_on_complete": true,
+    "last_run": "2026-11-07 20:42:51",
+    "last_status": "COMPLETED",
+    "updated_at": "2026-11-07 14:36:53",
+    "last_message": "Results published & database updated (826 Pass, 1716 Fail). Cron auto-disabled."
+}

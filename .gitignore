@@ -1,0 +1,23 @@
+# Environment variables
+.env
+.env.*
+admin/.env
+admin/.env.*
+user/.env
+user/.env.*
+!.env.example
+!admin/.env.example
+!user/.env.example
+
+# Log files
+*.log
+error_log
+admin/error_log
+result/error_log
+user/error_log
+
+# OS metadata
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db

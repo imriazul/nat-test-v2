@@ -1,0 +1,127 @@
+# Disable directory browsing
+Options -Indexes
+
+# Hide server signature
+ServerSignature Off
+
+<IfModule mod_headers.c>
+    # Prevent MIME type sniffing
+    Header set X-Content-Type-Options "nosniff"
+    # Modern Referrer Policy
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+    # Enforce HTTPS via HSTS
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" env=HTTPS
+</IfModule>
+
+# ==============================================================================
+# 2. PROTECT SENSITIVE FILES & INTERNAL DIRECTORIES
+# ==============================================================================
+
+# Block direct access to .env, config.php, .htaccess, internal json, lock, git, ini, and log files
+<FilesMatch "^(\.env|config\.php|\.htaccess|\.git|.*\.ini|.*\.log|.*\.json|.*\.lock)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# ==============================================================================
+# 3. SPEED & PERFORMANCE OPTIMIZATION (GZIP / DEFLATE COMPRESSION)
+# ==============================================================================
+
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css
+    AddOutputFilterByType DEFLATE application/xml application/xhtml+xml application/rss+xml
+    AddOutputFilterByType DEFLATE application/javascript application/x-javascript text/javascript
+    AddOutputFilterByType DEFLATE application/json
+    AddOutputFilterByType DEFLATE image/svg+xml
+</IfModule>
+
+# ==============================================================================
+# 4. BROWSER CACHING (CORE WEB VITALS)
+# ==============================================================================
+
+# Ensure proper MIME types for icons & modern media
+<IfModule mod_mime.c>
+    AddType image/x-icon .ico
+    AddType image/png .png
+    AddType image/webp .webp
+    AddType image/avif .avif
+    AddType font/woff2 .woff2
+    AddType font/woff .woff
+</IfModule>
+
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresDefault "access plus 1 month"
+    ExpiresByType text/html "access plus 0 seconds"
+    ExpiresByType text/css "access plus 1 month"
+    ExpiresByType application/javascript "access plus 1 month"
+    ExpiresByType image/svg+xml "access plus 1 year"
+    ExpiresByType image/jpeg "access plus 1 year"
+    ExpiresByType image/png "access plus 1 year"
+    ExpiresByType image/webp "access plus 1 year"
+    ExpiresByType image/avif "access plus 1 year"
+    ExpiresByType image/x-icon "access plus 1 year"
+    ExpiresByType image/vnd.microsoft.icon "access plus 1 year"
+    ExpiresByType font/woff2 "access plus 1 year"
+    ExpiresByType font/woff "access plus 1 year"
+    ExpiresByType application/xml "access plus 0 seconds"
+    ExpiresByType text/xml "access plus 0 seconds"
+</IfModule>
+
+# ==============================================================================
+# 5. CANONICAL HTTPS & NON-WWW 301 REDIRECTS (PREVENTS DUPLICATE CONTENT)
+# ==============================================================================
+
+RewriteEngine On
+
+# A. Redirect WWW to non-WWW & Force HTTPS in a single 301 hop
+# Covers: http://www.domain.com -> https://domain.com AND https://www.domain.com -> https://domain.com
+RewriteCond %{HTTP_HOST} !^(localhost|127\.0\.0\.1)(:[0-9]+)?$ [NC]
+RewriteCond %{HTTP_HOST} ^www\.(.+)$ [NC]
+RewriteRule ^ https://%1%{REQUEST_URI} [R=301,L]
+
+# B. Force HTTPS for non-WWW HTTP traffic (1 hop)
+# Covers: http://domain.com -> https://domain.com
+RewriteCond %{HTTP_HOST} !^(localhost|127\.0\.0\.1)(:[0-9]+)?$ [NC]
+RewriteCond %{HTTPS} !=on [NC]
+RewriteCond %{HTTP:X-Forwarded-Proto} !https [NC]
+RewriteCond %{HTTP:CF-Visitor} !\"scheme\":\"https\" [NC]
+RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+
+# ==============================================================================
+# 6. CLEAN CANONICAL URLS & DUPLICATE CONTENT PREVENTION
+# ==============================================================================
+
+# Block direct browser requests to internal template partials (/common/)
+RewriteRule ^common(/.*)?$ - [F,L]
+
+# 1. 301 Redirect /index.php to root / (prevents duplicate homepage indexing)
+RewriteCond %{THE_REQUEST} ^[A-Z]{3,9}\ /index\.php [NC]
+RewriteRule ^index\.php$ / [L,R=301]
+
+# 2. 301 Redirect any external .php request to clean extensionless URL (e.g. /result.php -> /result)
+RewriteCond %{THE_REQUEST} ^[A-Z]{3,9}\ /([^\ ]+)\.php [NC]
+RewriteRule ^/?(.*)\.php$ /$1 [L,R=301]
+
+# Ensure clean /result always maps to result.php despite result/ subfolder
+RewriteRule ^result/?$ result.php [L]
+
+# Redirect legacy /sheetdata to /user/
+RewriteRule ^sheetdata/?$ user/ [R=301,L]
+
+# 3. Internally map clean URL back to corresponding .php file
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME}.php -f
+RewriteRule ^(.*)$ $1.php [L]
+# php -- BEGIN cPanel-generated handler, do not edit
+# Set the “ea-php82” package as the default “PHP” programming language.
+<IfModule mime_module>
+  AddHandler application/x-httpd-ea-php82 .php .php8 .phtml
+</IfModule>
+# php -- END cPanel-generated handler, do not edit

@@ -1,0 +1,40 @@
+# Disable directory browsing
+Options -Indexes
+
+# Set default directory index
+DirectoryIndex index.php
+
+# Protect sensitive files in the admin directory
+<FilesMatch "^(\.env|config\.php|\.htaccess|.*\.ini|.*\.log|.*\.json|.*\.lock)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# Prevent search engines from indexing, caching, or archiving any admin page
+<IfModule mod_headers.c>
+    Header set X-Robots-Tag "noindex, nofollow, noarchive, nosnippet"
+</IfModule>
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # 1. 301 Redirect direct request to index or index.php -> clean admin root /admin/
+    RewriteCond %{THE_REQUEST} ^[A-Z]{3,9}\ (.*?/)index(\.php)?(\?[^\ ]*)?\ HTTP/ [NC]
+    RewriteRule ^index(\.php)?$ %1 [R=301,L,NE]
+
+    # 2. Strip .php extension on direct GET requests
+    RewriteCond %{REQUEST_METHOD} !POST
+    RewriteCond %{THE_REQUEST} ^[A-Z]{3,9}\ (.*?)/([^/\ ]+)\.php(\?[^\ ]*)?\ HTTP/ [NC]
+    RewriteRule ^ %1/%2 [R=301,L,NE]
+
+    # 3. Fallback: internally map clean URL to .php file
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME}.php -f
+    RewriteRule ^(.*)$ $1.php [L,QSA]
+</IfModule>
