@@ -185,7 +185,7 @@ if ($action === 'get_active_locks') {
             // A. Fetch completed registrations (PENDING status awaiting payment, or PAID)
             $compStmt = $pdo->prepare("
                 SELECT test_site, date_of_test, time_slot, pc_number, examinee_number,
-                       candidate_name, degree_of_test, status, user_id
+                       candidate_name, degree_of_test, test_fee, status, user_id
                 FROM booking_completed
                 WHERE test_site = ? AND date_of_test = ?
             ");
@@ -200,6 +200,7 @@ if ($action === 'get_active_locks') {
                     'candidateName'    => $cRow['candidate_name'] ?? '',
                     'status'           => 'PENDING', // Registered pending payment!
                     'degree'           => $cRow['degree_of_test'],
+                    'testFee'          => formatTestFee($cRow['test_fee'] ?? null),
                     'remainingSeconds' => 0,
                     'isMine'           => ($currentUserId > 0 && (int)$cRow['user_id'] === $currentUserId)
                 ];
@@ -207,9 +208,9 @@ if ($action === 'get_active_locks') {
 
             // B. Fetch temporary holds & requested seats from seat_bookings
             $holdStmt = $pdo->prepare("
-                SELECT test_site, date_of_test, time_slot, pc_number, examinee_number, status, degree_of_test,
+                SELECT test_site, date_of_test, time_slot, pc_number, examinee_number, status, degree_of_test, test_fee, email,
                        TIMESTAMPDIFF(SECOND, NOW(), expires_at) AS remaining_seconds,
-                       user_id, user_name
+                       user_id, user_name, user_email
                 FROM seat_bookings
                 WHERE test_site = ? AND date_of_test = ?
             ");
@@ -225,8 +226,10 @@ if ($action === 'get_active_locks') {
                     'timeSlot'         => (int)$row['time_slot'],
                     'pc'               => (int)$row['pc_number'],
                     'examineeNumber'   => $row['examinee_number'],
+                    'email'            => $row['email'] ?? '',
                     'status'           => $lockStatus,
                     'degree'           => $row['degree_of_test'],
+                    'testFee'          => formatTestFee($row['test_fee'] ?? null),
                     'remainingSeconds' => max(0, $rem),
                     'isMine'           => isHoldOwnedByCurrentSession($row)
                 ];
@@ -339,6 +342,118 @@ if ($action === 'check_seat') {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ACTION: Send Examinee Verification OTP via Dedicated SMTP
+// ─────────────────────────────────────────────────────────────────────────────
+if ($action === 'send_examinee_otp' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $email = strtolower(trim((string)($_POST['email'] ?? '')));
+    if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        echo json_encode(['success' => false, 'error' => 'Please provide a valid examinee email address.']);
+        exit;
+    }
+
+    if (!isset($_SESSION['examinee_otp'])) {
+        $_SESSION['examinee_otp'] = [];
+    }
+
+    // Rate limiting: allow one send every 45 seconds per email
+    $lastSent = (int)($_SESSION['examinee_otp'][$email]['sent_at'] ?? 0);
+    $cooldown = 45;
+    $timeSince = time() - $lastSent;
+    if ($timeSince < $cooldown) {
+        $waitSec = $cooldown - $timeSince;
+        echo json_encode([
+            'success' => false,
+            'error'   => "Please wait {$waitSec} seconds before requesting another code."
+        ]);
+        exit;
+    }
+
+    // Generate 6-digit numeric OTP
+    $otp = (string)random_int(100000, 999999);
+    $_SESSION['examinee_otp'][$email] = [
+        'code'     => $otp,
+        'expires'  => time() + 600, // 10 minutes
+        'sent_at'  => time(),
+        'attempts' => 0
+    ];
+
+    $res = sendExamineeVerificationEmail($email, $otp);
+    if (!$res['success']) {
+        echo json_encode([
+            'success' => false,
+            'error'   => $res['error'] ?: 'Failed to send verification code. Please check email address and try again.'
+        ]);
+        exit;
+    }
+
+    echo json_encode([
+        'success' => true,
+        'message' => "Please check the Email inbox or spam folder for 6 Disits OTP Code."
+    ]);
+    exit;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ACTION: Verify Examinee Verification OTP
+// ─────────────────────────────────────────────────────────────────────────────
+if ($action === 'verify_examinee_otp' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $email = strtolower(trim((string)($_POST['email'] ?? '')));
+    $code  = trim((string)($_POST['code'] ?? ''));
+
+    if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        echo json_encode(['success' => false, 'error' => 'Please provide a valid examinee email address.']);
+        exit;
+    }
+
+    if (empty($code) || strlen($code) < 4 || strlen($code) > 10) {
+        echo json_encode(['success' => false, 'error' => 'Please enter the 6-digit verification code.']);
+        exit;
+    }
+
+    $otpRecord = $_SESSION['examinee_otp'][$email] ?? null;
+    if (!$otpRecord) {
+        echo json_encode(['success' => false, 'error' => 'No verification code was requested for this email. Please click Send Code first.']);
+        exit;
+    }
+
+    if (time() > $otpRecord['expires']) {
+        unset($_SESSION['examinee_otp'][$email]);
+        echo json_encode(['success' => false, 'error' => 'Verification code has expired. Please request a new code.']);
+        exit;
+    }
+
+    if (($otpRecord['attempts'] ?? 0) >= 5) {
+        unset($_SESSION['examinee_otp'][$email]);
+        echo json_encode(['success' => false, 'error' => 'Too many failed attempts. Please request a new verification code.']);
+        exit;
+    }
+
+    if ($otpRecord['code'] !== $code) {
+        $_SESSION['examinee_otp'][$email]['attempts'] = ($otpRecord['attempts'] ?? 0) + 1;
+        $remaining = 5 - $_SESSION['examinee_otp'][$email]['attempts'];
+        echo json_encode([
+            'success' => false,
+            'error'   => "Incorrect verification code. {$remaining} attempt(s) remaining."
+        ]);
+        exit;
+    }
+
+    // Success! Record verified email in session
+    if (!isset($_SESSION['verified_examinee_emails'])) {
+        $_SESSION['verified_examinee_emails'] = [];
+    }
+    $_SESSION['verified_examinee_emails'][$email] = time();
+    unset($_SESSION['examinee_otp'][$email]);
+
+    echo json_encode([
+        'success' => true,
+        'email'   => $email,
+        'message' => 'Examinee email verified successfully!'
+    ]);
+    exit;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 3. ACTION: Step 1 — Confirm Level
 // ─────────────────────────────────────────────────────────────────────────────
 if ($action === 'confirm_level' && $_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -347,6 +462,7 @@ if ($action === 'confirm_level' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $timeSlot = (int)($_POST['time_slot'] ?? 1);
     $pc       = (int)($_POST['pc'] ?? 0);
     $degree   = strtoupper(trim((string)($_POST['degree'] ?? '5Q')));
+    $examineeEmail = strtolower(trim((string)($_POST['email'] ?? '')));
     $siteInfo = getSiteDetails($siteKey);
 
     if (empty($date) || $pc <= 0 || $timeSlot <= 0 || empty($degree)) {
@@ -356,6 +472,16 @@ if ($action === 'confirm_level' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!in_array($degree, ['5Q', '4Q', '3Q'], true)) {
         echo json_encode(['success' => false, 'error' => 'Invalid exam level. Only 5Q, 4Q, and 3Q are available for registration.']);
+        exit;
+    }
+
+    if (empty($examineeEmail) || !filter_var($examineeEmail, FILTER_VALIDATE_EMAIL)) {
+        echo json_encode(['success' => false, 'error' => 'Please enter a valid examinee email address.']);
+        exit;
+    }
+
+    if (empty($_SESSION['verified_examinee_emails'][$examineeEmail])) {
+        echo json_encode(['success' => false, 'error' => 'Examinee email has not been verified yet. Please verify the examinee email to proceed.']);
         exit;
     }
 
@@ -429,6 +555,7 @@ if ($action === 'confirm_level' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                         user_id    = ?,
                         user_name  = ?,
                         user_email = ?,
+                        email      = ?,
                         status     = 'HOLDING',
                         expires_at = DATE_ADD(NOW(), INTERVAL 15 MINUTE)
                     WHERE id = ?
@@ -437,6 +564,7 @@ if ($action === 'confirm_level' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     $currentUserId ?: null,
                     $currentUserName,
                     $currentUserEmail,
+                    $examineeEmail,
                     $existing['id']
                 ]);
 
@@ -510,7 +638,14 @@ if ($action === 'confirm_level' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         // Fallback formula only if remote message is success but ID field was blank
         $examineeId = computeExamineeNumber($date, $siteInfo['testSite'], $degree, $timeSlot, $pc);
     }
-    $testFee = formatTestFee($api1Data['testFee'] ?? null);
+
+    // Extract official test fee returned from remote API (support testFee, test_fee, fee, TestFee, or nested data)
+    $rawApiFee = $api1Data['testFee']
+              ?? $api1Data['test_fee']
+              ?? $api1Data['fee']
+              ?? $api1Data['TestFee']
+              ?? (isset($api1Data['data']) && is_array($api1Data['data']) ? ($api1Data['data']['testFee'] ?? $api1Data['data']['test_fee'] ?? $api1Data['data']['fee'] ?? null) : null);
+    $testFee = formatTestFee($rawApiFee);
 
     // Extract authentic workstation assigned by the official examination server (encoded in last 3 digits: e.g. '010' -> 1)
     $assignedPc = $pc;
@@ -535,17 +670,18 @@ if ($action === 'confirm_level' && $_SERVER['REQUEST_METHOD'] === 'POST') {
             // Insert official examinee number & official test fee into seat_bookings with 15-minute hold
             $insStmt = $pdo->prepare("
                 INSERT INTO seat_bookings (
-                    examinee_number, user_id, user_name, user_email,
+                    examinee_number, user_id, user_name, user_email, email,
                     country_test, city_test, test_site, date_of_test, time_slot, pc_number, degree_of_test,
                     test_fee, status, expires_at
                 ) VALUES (
-                    ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?,
                     'BANGLADESH', ?, ?, ?, ?, ?, ?,
                     ?, 'HOLDING', DATE_ADD(NOW(), INTERVAL 15 MINUTE)
                 ) ON DUPLICATE KEY UPDATE
                     user_id        = VALUES(user_id),
                     user_name      = VALUES(user_name),
                     user_email     = VALUES(user_email),
+                    email          = VALUES(email),
                     country_test   = VALUES(country_test),
                     city_test      = VALUES(city_test),
                     test_site      = VALUES(test_site),
@@ -562,6 +698,7 @@ if ($action === 'confirm_level' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 $currentUserId ?: null,
                 $currentUserName,
                 $currentUserEmail,
+                $examineeEmail,
                 $siteInfo['cityTest'],
                 $siteInfo['testSite'],
                 $date,
@@ -666,7 +803,7 @@ if ($action === 'submit_registration' && $_SERVER['REQUEST_METHOD'] === 'POST') 
 
             $stmt = $pdo->prepare("
                 SELECT id, status, degree_of_test, test_fee, country_test, city_test, test_site, date_of_test, time_slot, pc_number,
-                       TIMESTAMPDIFF(SECOND, NOW(), expires_at) as remaining_seconds, user_id, user_name, user_email
+                       TIMESTAMPDIFF(SECOND, NOW(), expires_at) as remaining_seconds, user_id, user_name, user_email, email
                 FROM seat_bookings
                 WHERE examinee_number = ?
                 LIMIT 1
@@ -686,6 +823,19 @@ if ($action === 'submit_registration' && $_SERVER['REQUEST_METHOD'] === 'POST') 
             if ($rem > 0 && !$isAdmin && !isHoldOwnedByCurrentSession($hold)) {
                 http_response_code(403);
                 echo json_encode(['success' => false, 'error' => 'This workstation is currently on a 15-minute hold by another applicant.']);
+                exit;
+            }
+
+            // Verify candidate email authenticity
+            $cleanSubmittedEmail = strtolower(trim($email));
+            $holdEmail = strtolower(trim((string)($hold['email'] ?? '')));
+            $isVerifiedInSession = !empty($_SESSION['verified_examinee_emails'][$cleanSubmittedEmail]);
+
+            if (!$isVerifiedInSession && (empty($holdEmail) || $holdEmail !== $cleanSubmittedEmail)) {
+                echo json_encode([
+                    'success' => false,
+                    'error'   => 'Candidate email is not verified or does not match the verified reservation email.'
+                ]);
                 exit;
             }
 

@@ -353,3 +353,220 @@ function verifyUserLogin(string $email, string $password): array {
         'error'   => 'Invalid email or password. Please verify your credentials and try again.'
     ];
 }
+
+/**
+ * Send Examinee OTP Verification Email via dedicated SMTP (mail.nat-test.bd:465 SSL)
+ *
+ * @param string $toEmail Recipient candidate email address
+ * @param string $otpCode 6-digit numeric verification code
+ * @return array ['success' => bool, 'error' => string]
+ */
+function sendExamineeVerificationEmail(string $toEmail, string $otpCode): array {
+    $toEmail = trim($toEmail);
+    if (!filter_var($toEmail, FILTER_VALIDATE_EMAIL)) {
+        return ['success' => false, 'error' => 'Invalid candidate email address format.'];
+    }
+
+    $host     = trim($_ENV['VERIFY_SMTP_HOST'] ?? 'mail.nat-test.bd');
+    $port     = (int)($_ENV['VERIFY_SMTP_PORT'] ?? 465);
+    $secure   = strtolower(trim($_ENV['VERIFY_SMTP_SECURE'] ?? 'ssl'));
+    $user     = trim($_ENV['VERIFY_SMTP_USER'] ?? 'verify@nat-test.bd');
+    $pass     = trim($_ENV['VERIFY_SMTP_PASS'] ?? '');
+    $from     = trim($_ENV['VERIFY_SMTP_FROM_EMAIL'] ?? 'verify@nat-test.bd');
+    $fromName = trim($_ENV['VERIFY_SMTP_FROM_NAME'] ?? 'NAT-TEST BD Verification');
+    $replyTo  = trim($_ENV['VERIFY_SMTP_REPLY_TO'] ?? 'support@nat-test.bd');
+
+    if (empty($host) || empty($user) || empty($pass)) {
+        $errMsg = 'SMTP configuration incomplete. Please verify VERIFY_SMTP_HOST, USER, and PASS in .env.';
+        error_log("[Examinee Verification] " . $errMsg);
+        return ['success' => false, 'error' => $errMsg];
+    }
+
+    $socketHost = ($secure === 'ssl') ? "ssl://$host" : $host;
+    $context = stream_context_create([
+        'ssl' => [
+            'verify_peer'       => false,
+            'verify_peer_name'  => false,
+            'allow_self_signed' => true,
+            'SNI_enabled'       => true,
+            'peer_name'         => $host,
+        ]
+    ]);
+
+    $errno = 0;
+    $errstr = '';
+    $socket = @stream_socket_client("$socketHost:$port", $errno, $errstr, 12, STREAM_CLIENT_CONNECT, $context);
+    if (!$socket) {
+        $errMsg = "SMTP connection to $socketHost:$port failed: $errstr ($errno)";
+        error_log("[Examinee Verification] " . $errMsg);
+        return ['success' => false, 'error' => 'Could not connect to mail server. Please try again shortly.'];
+    }
+
+    stream_set_timeout($socket, 12);
+
+    $readResponse = function() use ($socket) {
+        $response = "";
+        while (!feof($socket) && ($line = fgets($socket, 515))) {
+            $response .= $line;
+            if (isset($line[3]) && $line[3] === ' ') break;
+        }
+        return $response;
+    };
+
+    $sendCommand = function(string $cmd) use ($socket, $readResponse) {
+        fputs($socket, $cmd . "\r\n");
+        return $readResponse();
+    };
+
+    $banner = $readResponse();
+    if (substr($banner, 0, 3) !== '220') {
+        fclose($socket);
+        error_log("[Examinee Verification] Unexpected SMTP banner: " . trim($banner));
+        return ['success' => false, 'error' => 'Mail server returned unexpected banner.'];
+    }
+
+    $serverIdentifier = $_SERVER['SERVER_NAME'] ?? 'localhost';
+    $helo = $sendCommand("EHLO $serverIdentifier");
+
+    // STARTTLS if configured
+    if ($secure === 'tls' || ($port === 587 && stripos($helo, 'STARTTLS') !== false)) {
+        $sendCommand("STARTTLS");
+        stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLS_CLIENT);
+        $sendCommand("EHLO $serverIdentifier");
+    }
+
+    // Authenticate (AUTH LOGIN)
+    $authResp = $sendCommand("AUTH LOGIN");
+    if (substr($authResp, 0, 3) !== '334') {
+        fclose($socket);
+        error_log("[Examinee Verification] AUTH LOGIN rejected: " . trim($authResp));
+        return ['success' => false, 'error' => 'Mail server authentication initiation failed.'];
+    }
+
+    $userResp = $sendCommand(base64_encode($user));
+    if (substr($userResp, 0, 3) !== '334') {
+        fclose($socket);
+        error_log("[Examinee Verification] SMTP User rejected: " . trim($userResp));
+        return ['success' => false, 'error' => 'Mail server rejected sender username.'];
+    }
+
+    $passResp = $sendCommand(base64_encode($pass));
+    if (substr($passResp, 0, 3) !== '235') {
+        fclose($socket);
+        error_log("[Examinee Verification] SMTP Pass rejected: " . trim($passResp));
+        return ['success' => false, 'error' => 'Mail server authentication failed. Please verify email password.'];
+    }
+
+    // Envelope
+    $mailFrom = $sendCommand("MAIL FROM: <$from>");
+    if (substr($mailFrom, 0, 3) !== '250') {
+        fclose($socket);
+        error_log("[Examinee Verification] MAIL FROM rejected: " . trim($mailFrom));
+        return ['success' => false, 'error' => 'Mail server rejected envelope sender.'];
+    }
+
+    $rcptTo = $sendCommand("RCPT TO: <$toEmail>");
+    if (substr($rcptTo, 0, 3) !== '250') {
+        fclose($socket);
+        error_log("[Examinee Verification] RCPT TO rejected for $toEmail: " . trim($rcptTo));
+        return ['success' => false, 'error' => "Recipient email address was rejected by mail server ($toEmail)."];
+    }
+
+    $dataCmd = $sendCommand("DATA");
+    if (substr($dataCmd, 0, 3) !== '354') {
+        fclose($socket);
+        error_log("[Examinee Verification] DATA command rejected: " . trim($dataCmd));
+        return ['success' => false, 'error' => 'Mail server failed to accept email payload.'];
+    }
+
+    // Build Email Body
+    $subject = "Your NAT-TEST Verification Code: $otpCode";
+    $boundary = "----=_Part_" . md5(uniqid((string)mt_rand(), true));
+
+    $headers  = "From: =?UTF-8?B?" . base64_encode($fromName) . "?= <$from>\r\n";
+    $headers .= "Reply-To: <$replyTo>\r\n";
+    $headers .= "Return-Path: <$from>\r\n";
+    $headers .= "To: <$toEmail>\r\n";
+    $headers .= "Subject: =?UTF-8?B?" . base64_encode($subject) . "?=\r\n";
+    $headers .= "Date: " . date('r') . "\r\n";
+    $headers .= "MIME-Version: 1.0\r\n";
+    $headers .= "Content-Type: multipart/alternative; boundary=\"$boundary\"\r\n";
+    $headers .= "X-Mailer: NAT-TEST Portal Examinee Verifier\r\n\r\n";
+
+    $plainText = "NAT-TEST BD - Examinee Email Verification\r\n\r\n"
+               . "Your verification code is: $otpCode\r\n\r\n"
+               . "This code is valid for 10 minutes.\r\n"
+               . "Please enter this code on the registration page to confirm your examinee email address.\r\n\r\n"
+               . "If you did not request this verification, you may safely ignore this email.\r\n\r\n"
+               . "NAT-TEST Bangladesh Management";
+
+    $htmlBody = '
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>' . htmlspecialchars($subject) . '</title>
+</head>
+<body style="margin: 0; padding: 24px; font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, Helvetica, Arial, sans-serif; background-color: #0f172a; color: #e2e8f0;">
+    <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 520px; margin: 0 auto; background-color: #1e293b; border-radius: 16px; border: 1px solid #334155; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);">
+        <tr>
+            <td style="padding: 28px 28px 20px 28px; text-align: center; border-bottom: 1px solid #334155; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);">
+                <div style="font-size: 20px; font-weight: 900; letter-spacing: 1px; color: #38bdf8;">NAT-TEST BANGLADESH</div>
+                <div style="font-size: 12px; color: #94a3b8; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px;">Official Examinee Email Verification</div>
+            </td>
+        </tr>
+        <tr>
+            <td style="padding: 32px 28px 24px 28px;">
+                <p style="margin: 0 0 16px 0; font-size: 14px; line-height: 1.6; color: #cbd5e1;">
+                    Hello Examinee,
+                </p>
+                <p style="margin: 0 0 24px 0; font-size: 14px; line-height: 1.6; color: #cbd5e1;">
+                    A request was submitted on the NAT-TEST BD to verify this email address for CBT NAT-TEST registration. Please use the verification code below:
+                </p>
+                <div style="background-color: #0f172a; border: 2px dashed #38bdf8; border-radius: 12px; padding: 20px; text-align: center; margin: 0 0 24px 0;">
+                    <span style="font-family: \'Courier New\', Courier, monospace; font-size: 34px; font-weight: 900; letter-spacing: 8px; color: #38bdf8; display: inline-block;">' . htmlspecialchars($otpCode) . '</span>
+                </div>
+                <p style="margin: 0 0 12px 0; font-size: 13px; color: #f59e0b; text-align: center; font-weight: 600;">
+                    ⏳ This code is valid for 10 minutes.
+                </p>
+                <p style="margin: 0; font-size: 12px; line-height: 1.5; color: #94a3b8; text-align: center;">
+                    If you did not make this request or are not registering for NAT-TEST, you can safely disregard this email.
+                </p>
+            </td>
+        </tr>
+        <tr>
+            <td style="padding: 20px 28px; background-color: #0f172a; border-top: 1px solid #334155; text-align: center; font-size: 11px; color: #64748b;">
+                &copy; ' . date('Y') . ' NAT-TEST BD. All rights reserved.<br>
+                This is an automated verification email sent via verify@nat-test.bd.
+            </td>
+        </tr>
+    </table>
+</body>
+</html>';
+
+    $payload  = "--$boundary\r\n";
+    $payload .= "Content-Type: text/plain; charset=UTF-8\r\n";
+    $payload .= "Content-Transfer-Encoding: base64\r\n\r\n";
+    $payload .= chunk_split(base64_encode($plainText)) . "\r\n";
+
+    $payload .= "--$boundary\r\n";
+    $payload .= "Content-Type: text/html; charset=UTF-8\r\n";
+    $payload .= "Content-Transfer-Encoding: base64\r\n\r\n";
+    $payload .= chunk_split(base64_encode($htmlBody)) . "\r\n";
+    $payload .= "--$boundary--\r\n";
+
+    fputs($socket, $headers . $payload . "\r\n.\r\n");
+    $sendResp = $readResponse();
+
+    $sendCommand("QUIT");
+    fclose($socket);
+
+    if (substr($sendResp, 0, 3) === '250') {
+        return ['success' => true, 'error' => ''];
+    }
+
+    $errMsg = "SMTP payload sending failed: " . trim($sendResp);
+    error_log("[Examinee Verification] " . $errMsg);
+    return ['success' => false, 'error' => 'Mail delivery failed. Please check candidate email address and try again.'];
+}

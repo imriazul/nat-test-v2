@@ -415,6 +415,91 @@ $userInstitute = $_SESSION[$user_session_name . '_institute'] ?? '';
                     </div>
                 </div>
 
+                <!-- ── Examinee Email Verification Card ── -->
+                <div class="p-3.5 rounded-2xl bg-gray-900 border border-gray-700 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <label class="block text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                            Examinee Email Verification <span class="text-red-400">*</span>
+                        </label>
+                        <span id="bmEmailStatusBadge" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-950/80 text-amber-400 border border-amber-800">
+                            Unverified
+                        </span>
+                    </div>
+
+                    <!-- Email Input & Send OTP Button -->
+                    <div id="bmEmailInputGroup">
+                        <div class="flex gap-2">
+                            <input type="email" id="bmVerifyEmailInput" placeholder="examinee@example.com"
+                                class="w-full bg-gray-950 border border-gray-700 rounded-xl px-3 py-2 text-xs text-gray-100 placeholder:text-gray-500 focus:outline-none focus:border-cyan-400 transition"
+                                onkeydown="if(event.key==='Enter'){event.preventDefault(); sendExamineeOtp();}">
+                            <button type="button" id="bmSendOtpBtn" onclick="sendExamineeOtp()"
+                                class="px-3.5 py-2 rounded-xl text-xs font-bold bg-cyan-600 hover:bg-cyan-500 text-white transition flex items-center justify-center gap-1.5 shrink-0 cursor-pointer shadow-sm">
+                                <span id="bmSendOtpText">Send Code</span>
+                                <svg id="bmSendOtpSpinner" class="w-3.5 h-3.5 animate-spin hidden" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
+                            </button>
+                        </div>
+                        <p class="text-[10px] text-gray-400 mt-1.5 flex items-center gap-1">
+                            <span>A 6-digit OTP will be sent to examinee Email</span>
+                        </p>
+                    </div>
+
+                    <!-- OTP Input Group (Hidden initially) -->
+                    <div id="bmOtpInputGroup" class="hidden space-y-2 pt-1">
+                        <!-- Recipient Email Pill with Edit link -->
+                        <div class="flex items-center justify-between bg-gray-950/80 px-3 py-2 rounded-xl border border-gray-800 text-xs">
+                            <div class="flex items-center gap-1.5 truncate">
+                                <span class="text-gray-400 text-[11px]">Code sent to:</span>
+                                <span id="bmOtpTargetEmailDisplay" class="font-mono font-bold text-cyan-300 truncate"></span>
+                            </div>
+                            <button type="button" onclick="editExamineeEmail()" class="text-[11px] text-cyan-400 hover:text-cyan-300 font-semibold underline shrink-0 ml-2 cursor-pointer" title="Change email address">
+                                Edit
+                            </button>
+                        </div>
+
+                        <label class="block text-[11px] font-semibold text-gray-300 uppercase tracking-wider pt-1">
+                            Enter 6-Digit Code <span class="text-red-400">*</span>
+                        </label>
+                        <div class="flex gap-2">
+                            <input type="text" id="bmOtpCodeInput" maxlength="6" placeholder="123456"
+                                class="flex-1 bg-gray-950 border border-gray-700 rounded-xl px-3 py-2 text-center text-sm font-mono tracking-widest text-cyan-300 placeholder:text-gray-600 focus:outline-none focus:border-cyan-400 transition"
+                                oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 6)"
+                                onkeydown="if(event.key==='Enter'){event.preventDefault(); verifyExamineeOtp();}">
+                            <button type="button" id="bmVerifyOtpBtn" onclick="verifyExamineeOtp()"
+                                class="px-5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition flex items-center justify-center gap-1.5 shrink-0 cursor-pointer shadow-sm">
+                                <span id="bmVerifyOtpText">Verify</span>
+                                <svg id="bmVerifyOtpSpinner" class="w-3.5 h-3.5 animate-spin hidden" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
+                            </button>
+                        </div>
+                        <div class="flex justify-between items-center text-[11px] pt-0.5">
+                            <span id="bmOtpFeedbackMsg" class="text-cyan-400 truncate"></span>
+                            <div class="shrink-0 text-right">
+                                <span id="bmResendCountdown" class="text-gray-400">
+                                    Resend in <strong id="bmResendTimerSec" class="font-mono text-cyan-300 font-semibold">45s</strong>
+                                </span>
+                                <button type="button" id="bmResendOtpBtn" onclick="sendExamineeOtp()"
+                                    class="hidden text-cyan-400 hover:text-cyan-300 font-semibold underline transition cursor-pointer">
+                                    Resend Code
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Verified State Banner (Hidden until verified) -->
+                    <div id="bmVerifiedBadgeCard" class="hidden p-2.5 rounded-xl bg-emerald-950/70 border border-emerald-600 text-emerald-300 text-xs flex items-center justify-between">
+                        <div class="flex items-center gap-2 overflow-hidden">
+                            <svg class="w-4 h-4 text-emerald-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                            <div class="truncate">
+                                <span class="text-[10px] text-emerald-400 uppercase tracking-wider block font-bold">Verified Examinee Email</span>
+                                <span id="bmVerifiedEmailDisplay" class="font-mono font-bold text-gray-100 truncate"></span>
+                            </div>
+                        </div>
+                        <button type="button" onclick="resetExamineeEmailVerification()"
+                            class="text-[10px] text-gray-400 hover:text-red-300 bg-gray-900 border border-gray-700 hover:border-red-600 px-2 py-1 rounded-lg transition shrink-0 ml-2 cursor-pointer">
+                            Change
+                        </button>
+                    </div>
+                </div>
+
                 <!-- Seat Payload Preview -->
                 <div class="p-3.5 rounded-2xl bg-gray-900/80 border border-gray-700 text-xs space-y-1.5 font-mono text-gray-300">
                     <div class="flex justify-between">
@@ -497,11 +582,18 @@ $userInstitute = $_SESSION[$user_session_name . '_institute'] ?? '';
                         <p class="text-[10px] text-gray-500 mt-1">11 digits starting with 013–019</p>
                     </div>
                     <div>
-                        <label class="block text-[11px] font-semibold text-gray-300 uppercase tracking-wider mb-1">
-                            Email Address <span class="text-red-400">*</span>
-                        </label>
-                        <input type="email" id="bmCandidateEmail" required placeholder="candidate@example.com"
-                            class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-xs text-gray-100 placeholder:text-gray-500 focus:outline-none focus:border-cyan-400 transition">
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="block text-[11px] font-semibold text-gray-300 uppercase tracking-wider">
+                                Email Address <span class="text-red-400">*</span>
+                            </label>
+                            <span class="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400">
+                                <svg class="w-3 h-3 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                                <span>Verified</span>
+                            </span>
+                        </div>
+                        <input type="email" id="bmCandidateEmail" required readonly
+                            class="w-full bg-gray-950 border border-emerald-700/60 text-emerald-300 rounded-xl px-3 py-2 text-xs font-mono cursor-not-allowed transition select-none">
+                        <p class="text-[11px] text-gray-500 mt-1">Verified email can not be changed</p>
                     </div>
                 </div>
 
@@ -518,7 +610,7 @@ $userInstitute = $_SESSION[$user_session_name . '_institute'] ?? '';
                         <label class="block text-[11px] font-semibold text-gray-300 uppercase tracking-wider mb-1">
                             Zip / Postal Code <span class="text-red-400">*</span>
                         </label>
-                        <input type="text" id="bmCandidateZipcode" required placeholder="1112311"
+                        <input type="text" id="bmCandidateZipcode" required placeholder="1234"
                             class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-xs text-gray-100 placeholder:text-gray-500 focus:outline-none focus:border-cyan-400 transition">
                     </div>
                     <div>
@@ -1468,10 +1560,11 @@ $userInstitute = $_SESSION[$user_session_name . '_institute'] ?? '';
                 showBookingNotice(`This Seat only avaiable for ${preselectedDegree}.`);
             } else {
                 hideBookingNotice();
-                confirmBtn.disabled = true;
-                confirmBtn.className = "w-full mt-2 bg-gray-700 text-gray-400 font-black py-3 px-4 rounded-xl shadow-none transition text-sm flex items-center justify-center gap-2 opacity-60 cursor-not-allowed";
-                confirmBtnText.textContent = "Select Exam Level Above";
             }
+
+            // Reset examinee email verification for this booking session
+            resetExamineeEmailVerification();
+            updateConfirmLevelButtonState();
 
             // Switch to Step 1 view
             setBookingModalStep(1);
@@ -1484,7 +1577,7 @@ $userInstitute = $_SESSION[$user_session_name . '_institute'] ?? '';
 
         async function takeoverExpiredHold(lockInfo, sessionName) {
             openBookingModal(lockInfo.pc, sessionName, lockInfo.timeSlot, lockInfo.degree);
-            await handleConfirmLevel();
+            showBookingNotice(`Workstation available for ${lockInfo.degree}. Please verify examinee email to reserve this seat.`);
         }
 
         function setBookingModalStep(step) {
@@ -1520,6 +1613,317 @@ $userInstitute = $_SESSION[$user_session_name . '_institute'] ?? '';
             }
         }
 
+        let verifiedExamineeEmail = '';
+        let otpResendInterval = null;
+        let otpCooldown = 0;
+
+        function updateConfirmLevelButtonState() {
+            const confirmBtn = document.getElementById('bmConfirmLevelBtn');
+            const confirmBtnText = document.getElementById('bmConfirmBtnText');
+            if (!confirmBtn || !confirmBtnText) return;
+
+            const hasDegree = !!(currentBooking && currentBooking.degree);
+            const hasEmail = !!verifiedExamineeEmail;
+
+            if (hasDegree && hasEmail) {
+                confirmBtn.disabled = false;
+                confirmBtn.className = "w-full mt-2 bg-gradient-to-r from-cyan-500 to-teal-400 hover:from-cyan-400 hover:to-teal-300 text-gray-950 font-black py-3 px-4 rounded-xl shadow-lg shadow-cyan-500/20 transition transform active:scale-98 text-sm flex items-center justify-center gap-2 cursor-pointer";
+                confirmBtnText.textContent = `Confirm Level (${currentBooking.degree})`;
+            } else if (hasDegree && !hasEmail) {
+                confirmBtn.disabled = true;
+                confirmBtn.className = "w-full mt-2 bg-gray-700 text-gray-400 font-black py-3 px-4 rounded-xl shadow-none transition text-sm flex items-center justify-center gap-2 opacity-60 cursor-not-allowed";
+                confirmBtnText.textContent = "Verify The Email First";
+            } else if (!hasDegree && hasEmail) {
+                confirmBtn.disabled = true;
+                confirmBtn.className = "w-full mt-2 bg-gray-700 text-gray-400 font-black py-3 px-4 rounded-xl shadow-none transition text-sm flex items-center justify-center gap-2 opacity-60 cursor-not-allowed";
+                confirmBtnText.textContent = "Please Select Exam Level (5Q, 4Q, 3Q)";
+            } else {
+                confirmBtn.disabled = true;
+                confirmBtn.className = "w-full mt-2 bg-gray-700 text-gray-400 font-black py-3 px-4 rounded-xl shadow-none transition text-sm flex items-center justify-center gap-2 opacity-60 cursor-not-allowed";
+                confirmBtnText.textContent = "Select Exam Level & Verify Email";
+            }
+        }
+
+        function resetExamineeEmailVerification() {
+            verifiedExamineeEmail = '';
+            if (otpResendInterval) {
+                clearInterval(otpResendInterval);
+                otpResendInterval = null;
+            }
+            otpCooldown = 0;
+
+            const emailInput = document.getElementById('bmVerifyEmailInput');
+            if (emailInput) {
+                emailInput.value = '';
+                emailInput.disabled = false;
+            }
+            const otpInput = document.getElementById('bmOtpCodeInput');
+            if (otpInput) {
+                otpInput.value = '';
+            }
+
+            const inputGroup = document.getElementById('bmEmailInputGroup');
+            if (inputGroup) inputGroup.classList.remove('hidden');
+
+            const otpGroup = document.getElementById('bmOtpInputGroup');
+            if (otpGroup) otpGroup.classList.add('hidden');
+
+            const badgeCard = document.getElementById('bmVerifiedBadgeCard');
+            if (badgeCard) badgeCard.classList.add('hidden');
+
+            const statusBadge = document.getElementById('bmEmailStatusBadge');
+            if (statusBadge) {
+                statusBadge.className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-950/80 text-amber-400 border border-amber-800";
+                statusBadge.textContent = "Unverified";
+            }
+
+            const feedback = document.getElementById('bmOtpFeedbackMsg');
+            if (feedback) feedback.textContent = '';
+
+            const countdownEl = document.getElementById('bmResendCountdown');
+            const resendBtn   = document.getElementById('bmResendOtpBtn');
+            const timerSec    = document.getElementById('bmResendTimerSec');
+            if (countdownEl) countdownEl.classList.remove('hidden');
+            if (resendBtn)   resendBtn.classList.add('hidden');
+            if (timerSec)    timerSec.textContent = '45s';
+
+            updateConfirmLevelButtonState();
+        }
+
+        function editExamineeEmail() {
+            const emailGroup = document.getElementById('bmEmailInputGroup');
+            if (emailGroup) emailGroup.classList.remove('hidden');
+
+            const otpGroup = document.getElementById('bmOtpInputGroup');
+            if (otpGroup) otpGroup.classList.add('hidden');
+
+            const emailInput = document.getElementById('bmVerifyEmailInput');
+            if (emailInput) {
+                emailInput.disabled = false;
+                setTimeout(() => emailInput.focus(), 100);
+            }
+        }
+
+        async function sendExamineeOtp() {
+            const emailInput = document.getElementById('bmVerifyEmailInput');
+            const email = (emailInput?.value || '').trim().toLowerCase();
+            const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
+            if (!email || !emailRegex.test(email)) {
+                showBookingError('Please enter a valid examinee email address (e.g. examinee@gmail.com).');
+                if (emailInput) emailInput.focus();
+                return;
+            }
+
+            hideBookingError();
+
+            const btn = document.getElementById('bmSendOtpBtn');
+            const btnText = document.getElementById('bmSendOtpText');
+            const spinner = document.getElementById('bmSendOtpSpinner');
+            const feedback = document.getElementById('bmOtpFeedbackMsg');
+
+            btn.disabled = true;
+            btnText.textContent = "Sending...";
+            spinner.classList.remove('hidden');
+            if (feedback) feedback.textContent = '';
+
+            try {
+                const formData = new FormData();
+                formData.append('csrf_token', CSRF_TOKEN);
+                formData.append('action', 'send_examinee_otp');
+                formData.append('email', email);
+
+                const res = await fetch(BOOKING_API, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (res.status === 401) {
+                    alert('Session expired. Please sign in again.');
+                    window.location.href = LOGIN_URL;
+                    return;
+                }
+
+                let json;
+                try {
+                    json = await res.json();
+                } catch (parseErr) {
+                    throw new Error(`Server returned HTTP ${res.status}. Check mail server connection.`);
+                }
+
+                if (!json.success) {
+                    showBookingError(json.error || 'Failed to send verification code. Please check email address.');
+                    if (feedback) {
+                        feedback.className = "text-red-400";
+                        feedback.textContent = json.error || 'Failed to send verification code.';
+                    }
+                    return;
+                }
+
+                // Hide email input group, display target email pill, and show OTP input section
+                const emailGroup = document.getElementById('bmEmailInputGroup');
+                if (emailGroup) emailGroup.classList.add('hidden');
+
+                const targetDisplay = document.getElementById('bmOtpTargetEmailDisplay');
+                if (targetDisplay) targetDisplay.textContent = email;
+
+                const otpGroup = document.getElementById('bmOtpInputGroup');
+                if (otpGroup) otpGroup.classList.remove('hidden');
+
+                if (feedback) {
+                    feedback.className = "text-cyan-300";
+                    feedback.textContent = json.message || `Code sent to ${email}`;
+                }
+
+                const otpInput = document.getElementById('bmOtpCodeInput');
+                if (otpInput) {
+                    otpInput.value = '';
+                    setTimeout(() => otpInput.focus(), 150);
+                }
+
+                // Start 45-second resend cooldown timer
+                startOtpCooldownTimer(45);
+
+            } catch (err) {
+                showBookingError(`Delivery error: ${err.message}`);
+                if (feedback) {
+                    feedback.className = "text-red-400";
+                    feedback.textContent = `Error: ${err.message}`;
+                }
+            } finally {
+                btn.disabled = false;
+                btnText.textContent = "Resend";
+                spinner.classList.add('hidden');
+            }
+        }
+
+        function startOtpCooldownTimer(seconds) {
+            otpCooldown = seconds;
+            if (otpResendInterval) clearInterval(otpResendInterval);
+
+            const countdownEl = document.getElementById('bmResendCountdown');
+            const resendBtn   = document.getElementById('bmResendOtpBtn');
+            const timerSec    = document.getElementById('bmResendTimerSec');
+
+            if (countdownEl) countdownEl.classList.remove('hidden');
+            if (resendBtn)   resendBtn.classList.add('hidden');
+            if (timerSec)    timerSec.textContent = `${seconds}s`;
+
+            const updateTimerUi = () => {
+                if (otpCooldown > 0) {
+                    if (timerSec) timerSec.textContent = `${otpCooldown}s`;
+                    otpCooldown--;
+                } else {
+                    clearInterval(otpResendInterval);
+                    otpResendInterval = null;
+                    if (countdownEl) countdownEl.classList.add('hidden');
+                    if (resendBtn) {
+                        resendBtn.classList.remove('hidden');
+                        resendBtn.disabled = false;
+                    }
+                }
+            };
+
+            updateTimerUi();
+            otpResendInterval = setInterval(updateTimerUi, 1000);
+        }
+
+        async function verifyExamineeOtp() {
+            const emailInput = document.getElementById('bmVerifyEmailInput');
+            const email = (emailInput?.value || '').trim().toLowerCase();
+            const otpInput = document.getElementById('bmOtpCodeInput');
+            const code = (otpInput?.value || '').trim();
+            const feedback = document.getElementById('bmOtpFeedbackMsg');
+
+            if (!code || code.length !== 6) {
+                showBookingError('Please enter the 6-digit numeric verification code.');
+                if (otpInput) otpInput.focus();
+                return;
+            }
+
+            hideBookingError();
+
+            const btn = document.getElementById('bmVerifyOtpBtn');
+            const btnText = document.getElementById('bmVerifyOtpText');
+            const spinner = document.getElementById('bmVerifyOtpSpinner');
+
+            btn.disabled = true;
+            btnText.textContent = "Verifying...";
+            spinner.classList.remove('hidden');
+
+            try {
+                const formData = new FormData();
+                formData.append('csrf_token', CSRF_TOKEN);
+                formData.append('action', 'verify_examinee_otp');
+                formData.append('email', email);
+                formData.append('code', code);
+
+                const res = await fetch(BOOKING_API, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                let json;
+                try {
+                    json = await res.json();
+                } catch (parseErr) {
+                    throw new Error(`Server returned HTTP ${res.status}.`);
+                }
+
+                if (!json.success) {
+                    showBookingError(json.error || 'Invalid verification code.');
+                    if (feedback) {
+                        feedback.className = "text-red-400";
+                        feedback.textContent = json.error || 'Invalid code.';
+                    }
+                    return;
+                }
+
+                // Verification successful!
+                verifiedExamineeEmail = email;
+
+                if (otpResendInterval) {
+                    clearInterval(otpResendInterval);
+                    otpResendInterval = null;
+                }
+
+                // Hide input & OTP section, reveal verified badge card
+                document.getElementById('bmEmailInputGroup').classList.add('hidden');
+                document.getElementById('bmOtpInputGroup').classList.add('hidden');
+
+                const badgeCard = document.getElementById('bmVerifiedBadgeCard');
+                if (badgeCard) badgeCard.classList.remove('hidden');
+
+                const display = document.getElementById('bmVerifiedEmailDisplay');
+                if (display) display.textContent = email;
+
+                const statusBadge = document.getElementById('bmEmailStatusBadge');
+                if (statusBadge) {
+                    statusBadge.className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-400 border border-emerald-700";
+                    statusBadge.textContent = "✓ Verified";
+                }
+
+                // Pre-fill Step 2 locked field
+                const step2Email = document.getElementById('bmCandidateEmail');
+                if (step2Email) {
+                    step2Email.value = email;
+                }
+
+                updateConfirmLevelButtonState();
+
+            } catch (err) {
+                showBookingError(`Verification error: ${err.message}`);
+                if (feedback) {
+                    feedback.className = "text-red-400";
+                    feedback.textContent = `Error: ${err.message}`;
+                }
+            } finally {
+                btn.disabled = false;
+                btnText.textContent = "Verify";
+                spinner.classList.add('hidden');
+            }
+        }
+
         function selectExamLevel(level) {
             if (!currentBooking) return;
             currentBooking.degree = level;
@@ -1531,18 +1935,19 @@ $userInstitute = $_SESSION[$user_session_name . '_institute'] ?? '';
                 }
             });
 
-            // Enable Confirm Level button once user selects a level
-            const confirmBtn = document.getElementById('bmConfirmLevelBtn');
-            const confirmBtnText = document.getElementById('bmConfirmBtnText');
-            confirmBtn.disabled = false;
-            confirmBtn.className = "w-full mt-2 bg-gradient-to-r from-cyan-500 to-teal-400 hover:from-cyan-400 hover:to-teal-300 text-gray-950 font-black py-3 px-4 rounded-xl shadow-lg shadow-cyan-500/20 transition transform active:scale-98 text-sm flex items-center justify-center gap-2 cursor-pointer";
-            confirmBtnText.textContent = `Confirm Level (${level})`;
+            updateConfirmLevelButtonState();
             hideBookingError();
         }
 
         async function handleConfirmLevel() {
             if (!currentBooking || !currentBooking.degree) {
                 showBookingError('Please select an examination level before confirming.');
+                return;
+            }
+            if (!verifiedExamineeEmail) {
+                showBookingError('Please verify the examinee email address before confirming exam level.');
+                const emailInput = document.getElementById('bmVerifyEmailInput');
+                if (emailInput) emailInput.focus();
                 return;
             }
             hideBookingError();
@@ -1573,6 +1978,7 @@ $userInstitute = $_SESSION[$user_session_name . '_institute'] ?? '';
                 formData.append('time', sessionTime);
                 formData.append('pc', currentBooking.pc);
                 formData.append('degree', currentBooking.degree);
+                formData.append('email', verifiedExamineeEmail);
 
                 const res = await fetch(BOOKING_API, {
                     method: 'POST',
@@ -1781,6 +2187,11 @@ $userInstitute = $_SESSION[$user_session_name . '_institute'] ?? '';
             currentBooking.remainingSeconds = lockInfo.remainingSeconds;
             currentBooking.degree = lockInfo.degree || '5Q';
             currentBooking.testFee = lockInfo.testFee || 'N/A';
+            if (lockInfo.email) {
+                verifiedExamineeEmail = lockInfo.email;
+                const emailInput = document.getElementById('bmCandidateEmail');
+                if (emailInput) emailInput.value = lockInfo.email;
+            }
             document.getElementById('bmAssignedId').textContent = currentBooking.examineeNumber;
             document.getElementById('bmAssignedFee').textContent = currentBooking.testFee;
             startCountdownTimer(currentBooking.remainingSeconds);
@@ -1789,6 +2200,10 @@ $userInstitute = $_SESSION[$user_session_name . '_institute'] ?? '';
 
         function closeBookingModal() {
             clearInterval(countdownInterval);
+            if (otpResendInterval) {
+                clearInterval(otpResendInterval);
+                otpResendInterval = null;
+            }
             const modal = document.getElementById('bookingModal');
             modal.classList.add('hidden');
             modal.classList.remove('flex');
