@@ -570,3 +570,98 @@ function sendExamineeVerificationEmail(string $toEmail, string $otpCode): array 
     error_log("[Examinee Verification] " . $errMsg);
     return ['success' => false, 'error' => 'Mail delivery failed. Please check candidate email address and try again.'];
 }
+
+/**
+ * Load excluded examination days from excluded_days.json
+ */
+if (!function_exists('getExcludedDays')) {
+    function getExcludedDays(): array {
+        static $cache = null;
+        if ($cache !== null) {
+            return $cache;
+        }
+
+        $jsonPath = dirname(__DIR__) . '/excluded_days.json';
+        if (!file_exists($jsonPath)) {
+            $cache = [];
+            return $cache;
+        }
+
+        $raw = @file_get_contents($jsonPath);
+        if ($raw === false) {
+            $cache = [];
+            return $cache;
+        }
+
+        $data = json_decode($raw, true);
+        if (!is_array($data)) {
+            $cache = [];
+            return $cache;
+        }
+
+        $cache = $data;
+        return $cache;
+    }
+}
+
+/**
+ * Check if a specific date is excluded from examination schedule
+ *
+ * @param string $date e.g. '2026-11-12' or '2026/11/12'
+ * @param string $siteOrCode e.g. '474', 'dhaka', 'dhaka1', '476', 'khulna'
+ * @return bool
+ */
+if (!function_exists('isDateExcluded')) {
+    function isDateExcluded(string $date, string $siteOrCode = ''): bool {
+        $cleanDate = str_replace('/', '-', trim($date));
+        if (empty($cleanDate)) {
+            return false;
+        }
+
+        $excludedConfig = getExcludedDays();
+        if (empty($excludedConfig)) {
+            return false;
+        }
+
+        // Determine target center aliases (support center code and site name)
+        $cleanSite = strtolower(trim($siteOrCode));
+        $centerAliases = ['all', '*'];
+
+        if (in_array($cleanSite, ['474', 'dhaka', 'dhaka1'], true)) {
+            $centerAliases[] = '474';
+            $centerAliases[] = 'dhaka';
+            $centerAliases[] = 'dhaka1';
+        } elseif (in_array($cleanSite, ['476', 'khulna'], true)) {
+            $centerAliases[] = '476';
+            $centerAliases[] = 'khulna';
+        } elseif (!empty($cleanSite)) {
+            $centerAliases[] = $cleanSite;
+        }
+
+        // Check each matching group in the JSON config
+        foreach ($excludedConfig as $groupKey => $dates) {
+            if ($groupKey === '_comment' || !is_array($dates)) {
+                continue;
+            }
+
+            $groupKeyNorm = strtolower(trim((string)$groupKey));
+            if (in_array($groupKeyNorm, $centerAliases, true)) {
+                foreach ($dates as $item) {
+                    if (is_string($item)) {
+                        $itemNorm = str_replace('/', '-', trim($item));
+                        if ($itemNorm === $cleanDate) {
+                            return true;
+                        }
+                    } elseif (is_array($item) && !empty($item['date'])) {
+                        $itemNorm = str_replace('/', '-', trim((string)$item['date']));
+                        if ($itemNorm === $cleanDate) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+}

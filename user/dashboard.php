@@ -841,6 +841,15 @@ $userInstitute = $_SESSION[$user_session_name . '_institute'] ?? '';
             return `${y}/${m}/${d}`;
         }
 
+        function getClientTomorrow() {
+            const now = new Date();
+            now.setDate(now.getDate() + 1);
+            const y = now.getFullYear();
+            const m = String(now.getMonth() + 1).padStart(2, '0');
+            const d = String(now.getDate()).padStart(2, '0');
+            return `${y}/${m}/${d}`;
+        }
+
         // ─── STEP 1: Switch Exam Center ───
         function switchSite(siteId, button) {
             currentSite = siteId;
@@ -919,11 +928,12 @@ $userInstitute = $_SESSION[$user_session_name . '_institute'] ?? '';
                 select.disabled = false;
                 select.innerHTML = `<option value="">-- Choose Exam Date (${availableDates.length} available) --</option>`;
 
+                const clientTomorrow = getClientTomorrow();
                 availableDates.forEach((s, idx) => {
                     const opt = document.createElement("option");
                     opt.value = idx;
-                    const isToday = (s.name === clientToday);
-                    opt.textContent = isToday ? `${s.name} (Today)` : s.name;
+                    const isTomorrow = (s.name === clientTomorrow);
+                    opt.textContent = isTomorrow ? `${s.name} (Tomorrow)` : s.name;
                     select.appendChild(opt);
                 });
 

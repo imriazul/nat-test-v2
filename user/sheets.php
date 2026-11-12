@@ -129,6 +129,21 @@ if ($action === 'data' || !empty($sheetParam)) {
         exit;
     }
 
+    // Enforce that reservations are only allowed for future dates (starting from tomorrow)
+    $minDate = date('Y/m/d', strtotime('+1 day'));
+    if ($targetSheet < $minDate) {
+        http_response_code(400);
+        echo json_encode(["error" => "Exam reservations are only available starting from tomorrow onward."]);
+        exit;
+    }
+
+    // Check if this date is excluded in excluded_days.json
+    if (isDateExcluded($targetSheet, $activeCenter['id'])) {
+        http_response_code(403);
+        echo json_encode(["error" => "No examination is conducted on {$targetSheet} for {$activeCenter['name']} (Excluded Date)."]);
+        exit;
+    }
+
     // Lightweight 30-second Server-Side Cache (prevents hitting Google API rate limits)
     $cacheDir = sys_get_temp_dir() . '/nat_test_cache';
     if (!is_dir($cacheDir)) {
@@ -183,13 +198,17 @@ if ($action === 'data' || !empty($sheetParam)) {
 }
 
 // ─── ACTION: List Available Date Sheets ───────────────────────
-// 1. Determine "Today" (validated)
+// 1. Determine "Today" and "Tomorrow" (enforce reservations strictly from tomorrow onward)
 $todayInput = $_GET['today'] ?? '';
 if (!empty($todayInput) && preg_match('#^\d{4}[-/]\d{2}[-/]\d{2}$#', $todayInput)) {
     $today = str_replace('-', '/', $todayInput);
 } else {
     $today = date('Y/m/d');
 }
+
+// Reservations are strictly open from tomorrow onward (no past dates or today)
+$tomorrow = date('Y/m/d', strtotime(str_replace('/', '-', $today) . ' +1 day'));
+$minDate  = $tomorrow;
 
 // 2. Determine Range Mode
 $days  = isset($_GET['days']) ? (int)$_GET['days'] : null;
@@ -201,18 +220,19 @@ if ($range === '15days') $days = 15;
 if (!empty($_GET['start']) && !empty($_GET['end'])
     && preg_match('#^\d{4}[-/]\d{2}[-/]\d{2}$#', $_GET['start'])
     && preg_match('#^\d{4}[-/]\d{2}[-/]\d{2}$#', $_GET['end'])) {
-    // Custom start and end date
-    $startDate = str_replace('-', '/', $_GET['start']);
+    // Custom start and end date (must not be earlier than tomorrow)
+    $reqStart  = str_replace('-', '/', $_GET['start']);
+    $startDate = max($reqStart, $minDate);
     $endDate   = str_replace('-', '/', $_GET['end']);
     $filterType = 'custom';
 } elseif ($days !== null && $days > 0 && $days <= 365) {
-    // Next N days
-    $startDate = $today;
+    // Next N days starting from tomorrow
+    $startDate = $minDate;
     $endDate   = date('Y/m/d', strtotime(str_replace('/', '-', $today) . " +{$days} days"));
     $filterType = 'days';
 } else {
-    // Default: Today to last sheet of current month
-    $startDate = $today;
+    // Default: From tomorrow onward for the current month
+    $startDate = $minDate;
     $currentMonthPrefix = substr($today, 0, 7) . '/';
     $filterType = 'month';
 }
@@ -272,8 +292,18 @@ foreach ($matches as $match) {
 
     // Must match date pattern YYYY/MM/DD
     if (preg_match('#^\d{4}/\d{2}/\d{2}$#', $name)) {
+        // Enforce: strictly exclude all past dates and today (reservations allowed from tomorrow onward)
+        if ($name < $minDate) {
+            continue;
+        }
+
+        // Skip dates excluded in excluded_days.json
+        if (isDateExcluded($name, $activeCenter['id'])) {
+            continue;
+        }
+
         if ($filterType === 'month') {
-            // Include all dates belonging to the current month
+            // Include dates of the current month that are >= tomorrow
             if (str_starts_with($name, $currentMonthPrefix)) {
                 $filteredSheets[] = ["name" => $name, "gid" => $gid];
             }
@@ -293,6 +323,10 @@ if ($filterType === 'month' && empty($filteredSheets) && !empty($matches)) {
         $gid  = $match[1];
         $name = $match[2];
         if (preg_match('#^\d{4}/\d{2}/\d{2}$#', $name) && $name >= $startDate) {
+            // Skip dates excluded in excluded_days.json
+            if (isDateExcluded($name, $activeCenter['id'])) {
+                continue;
+            }
             $filteredSheets[] = ["name" => $name, "gid" => $gid];
             if (count($filteredSheets) >= 30) break;
         }

@@ -320,6 +320,110 @@ function maskPhone($phone) {
     return substr($phone, 0, 5) . str_repeat('*', max(3, $len - 8)) . substr($phone, -3);
 }
 
+/**
+ * Load excluded examination days from excluded_days.json
+ */
+if (!function_exists('getExcludedDays')) {
+    function getExcludedDays(): array {
+        static $cache = null;
+        if ($cache !== null) {
+            return $cache;
+        }
+
+        $jsonPath = __DIR__ . '/excluded_days.json';
+        if (!file_exists($jsonPath)) {
+            $cache = ['474' => [], '476' => [], 'all' => []];
+            return $cache;
+        }
+
+        $raw = @file_get_contents($jsonPath);
+        if ($raw === false) {
+            $cache = ['474' => [], '476' => [], 'all' => []];
+            return $cache;
+        }
+
+        $data = json_decode($raw, true);
+        if (!is_array($data)) {
+            $cache = ['474' => [], '476' => [], 'all' => []];
+            return $cache;
+        }
+
+        $cache = $data;
+        return $cache;
+    }
+}
+
+/**
+ * Save excluded examination days to excluded_days.json
+ */
+if (!function_exists('saveExcludedDays')) {
+    function saveExcludedDays(array $data): bool {
+        $jsonPath = __DIR__ . '/excluded_days.json';
+        $formatted = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        if ($formatted === false) {
+            return false;
+        }
+        $res = @file_put_contents($jsonPath, $formatted . "\n");
+        return $res !== false;
+    }
+}
+
+/**
+ * Check if a specific date is excluded from examination schedule
+ */
+if (!function_exists('isDateExcluded')) {
+    function isDateExcluded(string $date, string $siteOrCode = ''): bool {
+        $cleanDate = str_replace('/', '-', trim($date));
+        if (empty($cleanDate)) {
+            return false;
+        }
+
+        $excludedConfig = getExcludedDays();
+        if (empty($excludedConfig)) {
+            return false;
+        }
+
+        $cleanSite = strtolower(trim($siteOrCode));
+        $centerAliases = ['all', '*'];
+
+        if (in_array($cleanSite, ['474', 'dhaka', 'dhaka1'], true)) {
+            $centerAliases[] = '474';
+            $centerAliases[] = 'dhaka';
+            $centerAliases[] = 'dhaka1';
+        } elseif (in_array($cleanSite, ['476', 'khulna'], true)) {
+            $centerAliases[] = '476';
+            $centerAliases[] = 'khulna';
+        } elseif (!empty($cleanSite)) {
+            $centerAliases[] = $cleanSite;
+        }
+
+        foreach ($excludedConfig as $groupKey => $dates) {
+            if ($groupKey === '_comment' || !is_array($dates)) {
+                continue;
+            }
+
+            $groupKeyNorm = strtolower(trim((string)$groupKey));
+            if (in_array($groupKeyNorm, $centerAliases, true)) {
+                foreach ($dates as $item) {
+                    if (is_string($item)) {
+                        $itemNorm = str_replace('/', '-', trim($item));
+                        if ($itemNorm === $cleanDate) {
+                            return true;
+                        }
+                    } elseif (is_array($item) && !empty($item['date'])) {
+                        $itemNorm = str_replace('/', '-', trim((string)$item['date']));
+                        if ($itemNorm === $cleanDate) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+}
+
 // ─── Resend Email Client (Native cURL - Zero Dependencies) ─────────
 // Support Composer autoload if present in the future
 if (file_exists(__DIR__ . '/vendor/autoload.php')) {

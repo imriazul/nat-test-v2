@@ -258,6 +258,23 @@ if ($action === 'check_seat') {
         exit;
     }
 
+    $minBookingDate = date('Y-m-d', strtotime('+1 day'));
+    if ($date < $minBookingDate) {
+        echo json_encode([
+            'success' => false,
+            'error'   => 'Reservations cannot be made for today or past dates. Please choose an exam date from tomorrow onward.'
+        ]);
+        exit;
+    }
+
+    if (isDateExcluded($date, $siteInfo['testSite'])) {
+        echo json_encode([
+            'success' => false,
+            'error'   => "No examination is conducted on {$date} for {$siteInfo['name']} (Excluded Date)."
+        ]);
+        exit;
+    }
+
     $pdo = getUserPortalPDO();
     if (!$pdo) {
         echo json_encode(['success' => false, 'error' => 'Database connection failed. Unable to reserve workstation.']);
@@ -467,6 +484,23 @@ if ($action === 'confirm_level' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (empty($date) || $pc <= 0 || $timeSlot <= 0 || empty($degree)) {
         echo json_encode(['success' => false, 'error' => 'Please provide site, date, time slot, PC station, and exam level.']);
+        exit;
+    }
+
+    $minBookingDate = date('Y-m-d', strtotime('+1 day'));
+    if ($date < $minBookingDate) {
+        echo json_encode([
+            'success' => false,
+            'error'   => 'Reservations cannot be made for today or past dates. Please choose an exam date from tomorrow onward.'
+        ]);
+        exit;
+    }
+
+    if (isDateExcluded($date, $siteInfo['testSite'])) {
+        echo json_encode([
+            'success' => false,
+            'error'   => "No examination is conducted on {$date} for {$siteInfo['name']} (Excluded Date)."
+        ]);
         exit;
     }
 
