@@ -1,0 +1,15 @@
+{
+    "enabled": false,
+    "known_old_data": "For tests held through November 9, 2026 (Mon)",
+    "center_code": "all",
+    "auto_disable_on_complete": false,
+    "email_notifications": true,
+    "admin_emails": "hiriazul@gmail.com,ulsaioffice@gmail.com",
+    "mod_emails": "sherbazahmed787@gmail.com,salekeenmanob01@gmail.com",
+    "last_published_cutoff": "For tests held through November 9, 2026 (Mon)",
+    "last_published_date": "09 November 2026",
+    "last_run": null,
+    "last_status": "READY",
+    "last_message": "CBT Scraper ready. Standing by.",
+    "updated_at": "2026-11-12 07:56:00"
+}

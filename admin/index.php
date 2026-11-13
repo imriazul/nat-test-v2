@@ -87,8 +87,8 @@ if (isset($_GET['logout'])) {
 $isLoggedIn = isset($_SESSION[$admin_session_name]) && $_SESSION[$admin_session_name] === true;
 
 // ─── AJAX Endpoints ─────────────────────────────────────────
-$isAjax = (isset($_GET['action']) && in_array($_GET['action'], ['stats', 'check_table', 'get_cron_config', 'get_users', 'get_excluded_days'])) 
-       || (isset($_POST['action']) && in_array($_POST['action'], ['init_table', 'import_batch', 'delete_table', 'toggle_cron', 'save_cron_config', 'reset_cron_status', 'run_cron_now', 'create_user', 'update_user', 'delete_user', 'toggle_user_status', 'add_excluded_day', 'remove_excluded_day']));
+$isAjax = (isset($_GET['action']) && in_array($_GET['action'], ['stats', 'check_table', 'get_cron_config', 'get_users', 'get_excluded_days', 'get_cbt_cron_config'])) 
+       || (isset($_POST['action']) && in_array($_POST['action'], ['init_table', 'import_batch', 'delete_table', 'toggle_cron', 'save_cron_config', 'reset_cron_status', 'run_cron_now', 'create_user', 'update_user', 'delete_user', 'toggle_user_status', 'add_excluded_day', 'remove_excluded_day', 'toggle_cbt_cron', 'save_cbt_cron_config', 'reset_cbt_cron_status', 'run_cbt_cron_now']));
 
 if ($isAjax && !$isLoggedIn) {
     header('Content-Type: application/json', true, 401);
@@ -525,6 +525,191 @@ if ($isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action
     exit;
 }
 
+// ─── CBT Cron Job Config Helpers & AJAX Handlers ──────────────
+function getAdminCbtCronConfigFile() {
+    return dirname(__DIR__) . '/result/cbt-cron-config.json';
+}
+function getAdminCbtCronStatusFile() {
+    return dirname(__DIR__) . '/result/cbt-cron-status.json';
+}
+function loadAdminCbtCronConfig() {
+    $file = getAdminCbtCronConfigFile();
+    $default = [
+        'enabled'                  => false,
+        'known_old_data'           => 'For tests held through November 9, 2026 (Mon)',
+        'center_code'              => 'all',
+        'auto_disable_on_complete' => false,
+        'email_notifications'      => true,
+        'admin_emails'             => 'hiriazul@gmail.com,ulsaioffice@gmail.com',
+        'mod_emails'               => 'sherbazahmed787@gmail.com,salekeenmanob01@gmail.com',
+        'last_published_cutoff'    => '',
+        'last_published_date'      => '',
+        'last_run'                 => null,
+        'last_status'              => 'DISABLED',
+        'last_message'             => 'CBT Scraper initialized.',
+        'updated_at'               => date('Y-m-d H:i:s')
+    ];
+    if (file_exists($file)) {
+        $data = json_decode(@file_get_contents($file), true);
+        if (is_array($data)) return array_merge($default, $data);
+    }
+    return $default;
+}
+function saveAdminCbtCronConfigFile($data) {
+    $file = getAdminCbtCronConfigFile();
+    $dir = dirname($file);
+    if (!is_dir($dir)) @mkdir($dir, 0755, true);
+    return @file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT));
+}
+
+// AJAX: Get CBT Cron Job Config & Status
+if ($isLoggedIn && isset($_GET['action']) && $_GET['action'] === 'get_cbt_cron_config') {
+    header('Content-Type: application/json');
+    $config = loadAdminCbtCronConfig();
+    $statusData = [];
+    $statusFile = getAdminCbtCronStatusFile();
+    if (file_exists($statusFile)) {
+        $statusData = json_decode(@file_get_contents($statusFile), true) ?: [];
+    }
+    echo json_encode(['success' => true, 'config' => $config, 'metrics' => $statusData]);
+    exit;
+}
+
+// AJAX: Toggle CBT Cron Job Enable / Disable
+if ($isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'toggle_cbt_cron') {
+    if (ob_get_length()) ob_clean();
+    header('Content-Type: application/json');
+    $config = loadAdminCbtCronConfig();
+
+    if (isset($_POST['enabled'])) {
+        $raw = strtolower(trim((string)$_POST['enabled']));
+        $newState = ($raw === '1' || $raw === 'true');
+    } else {
+        $newState = empty($config['enabled']);
+    }
+
+    $config['enabled'] = $newState;
+    $config['last_status'] = $config['enabled'] ? 'ACTIVE' : 'DISABLED';
+    $config['updated_at'] = date('Y-m-d H:i:s');
+
+    $res = saveAdminCbtCronConfigFile($config);
+    if ($res === false) {
+        echo json_encode([
+            'success' => false,
+            'error'   => 'Permission error: Server cannot write to result/cbt-cron-config.json.'
+        ]);
+        exit;
+    }
+
+    echo json_encode(['success' => true, 'enabled' => $config['enabled'], 'config' => $config]);
+    exit;
+}
+
+// AJAX: Save CBT Cron Settings
+if ($isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'save_cbt_cron_config') {
+    if (ob_get_length()) ob_clean();
+    header('Content-Type: application/json');
+    $config = loadAdminCbtCronConfig();
+
+    $center = trim($_POST['center_code'] ?? 'all');
+    if (!in_array($center, ['474', '476', 'all'], true)) $center = 'all';
+
+    $knownOldData = trim((string)($_POST['known_old_data'] ?? ''));
+
+    $config['center_code'] = $center;
+    if ($knownOldData !== '') {
+        $config['known_old_data'] = $knownOldData;
+        $config['last_published_cutoff'] = $knownOldData;
+    }
+    $config['updated_at'] = date('Y-m-d H:i:s');
+
+    $res = saveAdminCbtCronConfigFile($config);
+    if ($res === false) {
+        echo json_encode([
+            'success' => false,
+            'error'   => 'Permission error: Server cannot write to result/cbt-cron-config.json.'
+        ]);
+        exit;
+    }
+
+    echo json_encode(['success' => true, 'message' => 'CBT Scraping settings saved.', 'config' => $config]);
+    exit;
+}
+
+// AJAX: Reset CBT Cutoff Lock Status
+if ($isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'reset_cbt_cron_status') {
+    if (ob_get_length()) ob_clean();
+    header('Content-Type: application/json');
+    $config = loadAdminCbtCronConfig();
+    $config['known_old_data']        = '';
+    $config['last_published_cutoff'] = '';
+    $config['last_published_date']   = '';
+    $config['last_status']           = $config['enabled'] ? 'ACTIVE' : 'DISABLED';
+    $config['last_message']          = 'KNOWN_OLD_DATA reset by admin. Next run will re-process latest CBT results.';
+    $config['updated_at']            = date('Y-m-d H:i:s');
+    saveAdminCbtCronConfigFile($config);
+
+    echo json_encode(['success' => true, 'message' => 'CBT KNOWN_OLD_DATA reset successfully.', 'config' => $config]);
+    exit;
+}
+
+// AJAX: Run CBT Scraper Now (Real-time Live Streaming)
+if ($isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'run_cbt_cron_now') {
+    @set_time_limit(180);
+
+    // Disable all buffering and compression so log chunks flush to browser immediately
+    if (function_exists('apache_setenv')) @apache_setenv('no-gzip', 1);
+    @ini_set('zlib.output_compression', 0);
+    @ini_set('implicit_flush', 1);
+    while (ob_get_level() > 0) {
+        @ob_end_clean();
+    }
+    @ob_implicit_flush(1);
+
+    header('Content-Type: text/plain; charset=utf-8');
+    header('Cache-Control: no-cache, no-store, must-revalidate, no-transform');
+    header('Pragma: no-cache');
+    header('X-Accel-Buffering: no'); // Tell Nginx / LiteSpeed reverse proxies not to buffer
+
+    // Proxy buffer kick-starter (1KB padding)
+    echo ":" . str_repeat(" ", 1024) . "\n";
+    if (ob_get_level() > 0) @ob_flush();
+    @flush();
+
+    $config = loadAdminCbtCronConfig();
+    $targetCenter = $_POST['center_code'] ?? $config['center_code'] ?? 'all';
+
+    $cronScript = dirname(__DIR__) . '/result/cbt-cron-job.php';
+    if (!file_exists($cronScript)) {
+        echo "❌ [ERROR] Scraper script file missing: result/cbt-cron-job.php\nPlease ensure this file is deployed to the server.\n";
+        exit;
+    }
+
+    if (!defined('ADMIN_INTERNAL_EXECUTION')) define('ADMIN_INTERNAL_EXECUTION', true);
+
+    $streamLogger = function($msg) {
+        echo $msg . "\n";
+        if (ob_get_level() > 0) @ob_flush();
+        @flush();
+    };
+
+    try {
+        require_once $cronScript;
+
+        $result = executeCbtResultScraper([
+            'force'  => true,
+            'center' => $targetCenter,
+            'on_log' => $streamLogger
+        ], $pdo);
+    } catch (Throwable $e) {
+        $errDetails = "Fatal Exception: " . $e->getMessage() . " in " . $e->getFile() . " on line " . $e->getLine();
+        echo "\n❌ [CRITICAL SCRAPER ERROR]\n" . $errDetails . "\n\nTrace:\n" . $e->getTraceAsString() . "\n";
+        exit;
+    }
+
+    exit;
+}
+
 // ─── User Portal Accounts Management Endpoints ───────────────
 
 // AJAX: Get list of all portal users
@@ -789,155 +974,284 @@ if ($isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action
 
         <!-- ── Result Publish Scraping Cron Job Card ── -->
         <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-8">
-            <!-- Card Header -->
-            <div class="p-6 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white">
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-xl bg-blue-500/20 border border-blue-400/30 flex items-center justify-center text-blue-400">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                    </div>
-                    <div>
-                        <div class="flex items-center gap-2 flex-wrap">
-                            <h2 class="text-lg font-bold text-white">Result Publish Scraping Cron Job</h2>
-                            <span id="cron-badge-status" class="px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wide uppercase bg-slate-700 text-slate-300 border border-slate-600 flex items-center gap-1.5">
-                                <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-                                <span>Loading...</span>
-                            </span>
+            <!-- Card Header & Service Tabs -->
+            <div class="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white p-6 pb-0">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-5 border-b border-slate-800">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-400/30 flex items-center justify-center text-cyan-400">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                         </div>
-                        <p class="text-slate-400 text-xs mt-0.5">Automates scraping official pass examinee IDs from nat-test.jp and updates database status (N5 ➔ N1) once published.</p>
+                        <div>
+                            <h2 class="text-lg font-bold text-white">Automated Result Scraper (Cron Service)</h2>
+                            <p class="text-slate-400 text-xs mt-0.5">Automates scraping official pass examinee IDs from nat-test.jp and updates database statuses once published.</p>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Toggle Switch in Header -->
-                <div class="flex items-center gap-3 bg-white/10 px-4 py-2.5 rounded-xl backdrop-blur-sm border border-white/10 shrink-0">
-                    <span class="text-xs font-semibold text-slate-200" id="cron-toggle-label">Cron Disabled</span>
-                    <button type="button" id="cron-toggle-btn" onclick="toggleCronJob()" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none bg-slate-600" role="switch" aria-checked="false" title="Click to Enable/Disable Cron Job">
-                        <span id="cron-toggle-knob" class="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow ring-0" style="transform: translateX(0px); transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);"></span>
+                <!-- Scraper Mode Tabs: PBT (Monthly) vs CBT (Weekly) -->
+                <div class="flex items-center gap-2 pt-3">
+                    <button type="button" id="tab-scraper-pbt" onclick="switchScraperTab('pbt')" class="px-4 py-2.5 text-xs font-bold rounded-t-xl border-b-2 transition flex items-center gap-2 border-blue-500 text-blue-400 bg-slate-800/80 cursor-pointer">
+                        <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                        <span>PBT Result Scraper (Monthly)</span>
+                        <span id="tab-badge-pbt" class="px-2 py-0.5 rounded-full text-[10px] bg-slate-700 text-slate-300 font-bold">OFF</span>
+                    </button>
+                    <button type="button" id="tab-scraper-cbt" onclick="switchScraperTab('cbt')" class="px-4 py-2.5 text-xs font-semibold rounded-t-xl border-b-2 transition flex items-center gap-2 border-transparent text-slate-400 hover:text-white cursor-pointer">
+                        <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                        <span>CBT Result Scraper (Weekly)</span>
+                        <span id="tab-badge-cbt" class="px-2 py-0.5 rounded-full text-[10px] bg-slate-700 text-slate-300 font-bold">OFF</span>
                     </button>
                 </div>
             </div>
 
-            <!-- Card Body -->
-            <div class="p-6">
-                <form id="cron-config-form" onsubmit="saveCronConfig(event)" class="space-y-6">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                        
-                        <!-- Scraping Exam Month -->
-                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                                Scraping Exam Month <span class="text-red-500">*</span>
-                            </label>
-                            <select id="cron-target-month" name="target_month" class="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none transition">
-                                <option value="01">01 - January</option>
-                                <option value="02">02 - February</option>
-                                <option value="03">03 - March</option>
-                                <option value="04">04 - April</option>
-                                <option value="05">05 - May</option>
-                                <option value="06">06 - June</option>
-                                <option value="07">07 - July</option>
-                                <option value="08">08 - August</option>
-                                <option value="09">09 - September</option>
-                                <option value="10">10 - October</option>
-                                <option value="11">11 - November</option>
-                                <option value="12">12 - December</option>
-                            </select>
-                            <p class="text-[11px] text-slate-400 mt-1.5">Exam session month to scrape</p>
-                        </div>
-
-                        <!-- Target Exam Year -->
-                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                                Exam Year <span class="text-red-500">*</span>
-                            </label>
-                            <div class="flex items-center">
-                                <span class="bg-slate-200 text-slate-600 px-3 py-2.5 rounded-l-lg border border-r-0 border-slate-300 text-sm font-bold">20</span>
-                                <input type="text" id="cron-target-year" name="target_year" maxlength="2" class="w-full bg-white border border-slate-300 rounded-r-lg p-2.5 text-sm font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none transition font-mono" placeholder="26">
-                            </div>
-                            <p class="text-[11px] text-slate-400 mt-1.5">2-digit year (e.g. 26 = 2026)</p>
-                        </div>
-
-                        <!-- Target Center Code -->
-                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                                Center Code
-                            </label>
-                            <select id="cron-center-code" name="center_code" class="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none transition">
-                                <option value="474">474 - Dhaka Center</option>
-                                <option value="476">476 - Khulna Center</option>
-                                <option value="all">All Centers (474, 476)</option>
-                            </select>
-                            <p class="text-[11px] text-slate-400 mt-1.5">Dhaka (474), Khulna (476)</p>
-                        </div>
-
-                        <!-- Auto-Stop Option -->
-                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col justify-between">
-                            <div>
-                                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                                    Auto-Stop Execution
-                                </label>
-                                <label class="flex items-start gap-2 cursor-pointer mt-1">
-                                    <input type="checkbox" id="cron-auto-disable" name="auto_disable_on_complete" value="1" checked class="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500">
-                                    <span class="text-xs text-slate-600 font-medium">Auto-disable cron after all levels (N5–N1) are updated</span>
-                                </label>
-                            </div>
-                            <p class="text-[11px] text-emerald-600 font-medium mt-1">✓ Automatically halts on completion</p>
-                        </div>
-
-                    </div>
-
-                    <!-- Live Cron Status Banner -->
-                    <div id="cron-status-banner" class="p-4 rounded-xl border flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-50 border-slate-200 text-slate-700">
-                        <div class="flex items-start gap-3">
-                            <div id="cron-status-icon" class="w-8 h-8 rounded-lg bg-slate-200 text-slate-600 flex items-center justify-center shrink-0 mt-0.5">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                            </div>
-                            <div>
-                                <div class="flex items-center gap-2 flex-wrap">
-                                    <span class="font-bold text-sm text-slate-800" id="cron-status-title">Cron Job Status</span>
-                                    <span id="cron-last-run" class="text-xs text-slate-400 font-mono">Last run: Never</span>
-                                </div>
-                                <p class="text-xs text-slate-500 mt-0.5" id="cron-status-desc">Cron is currently disabled. Toggle the switch above to activate automated scraping.</p>
-                            </div>
-                        </div>
-
-                        <div class="flex items-center gap-2 flex-wrap">
-                            <button type="button" onclick="runScraperNow()" id="btn-cron-run-now" class="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5 shadow-sm">
-                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                                <span id="btn-cron-run-text">Run Now (Test Scrape)</span>
-                            </button>
-                            <button type="button" onclick="resetCronLock()" id="btn-cron-reset" class="px-3 py-2 bg-slate-200 hover:bg-red-50 hover:text-red-600 text-slate-700 text-xs font-semibold rounded-lg transition hidden">
-                                Reset Completed Lock
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Footer: Save & Crontab hint -->
-                    <div class="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2">
-                        <div class="text-xs text-slate-500 flex items-center gap-2 flex-wrap">
-                            <span class="font-bold text-slate-700">cPanel Cron Command:</span>
-                            <code class="bg-slate-100 text-slate-800 px-2 py-1 rounded text-[11px] font-mono border border-slate-200 select-all" id="cron-crontab-snippet">
-                                /usr/local/bin/php <?php echo dirname(__DIR__); ?>/result/cron-job.php >/dev/null 2>&1
-                            </code>
-                        </div>
-                        <div class="flex items-center gap-3">
-                            <span id="cron-save-feedback" class="text-xs font-semibold text-emerald-600 opacity-0 transition-opacity duration-300">✓ Settings saved successfully!</span>
-                            <button type="submit" id="btn-save-cron" class="bg-slate-900 hover:bg-slate-800 text-white font-medium px-5 py-2.5 rounded-xl text-sm transition shadow-sm flex items-center gap-2">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                                <span>Save Scraping Settings</span>
-                            </button>
-                        </div>
-                    </div>
-                </form>
-
-                <!-- Live Scraper Output Console (Collapsible/Hidden by default) -->
-                <div id="cron-run-output-box" class="hidden mt-5 p-4 rounded-xl bg-slate-950 border border-slate-800 text-cyan-400 font-mono text-xs">
-                    <div class="flex justify-between items-center mb-2 pb-2 border-b border-slate-800">
-                        <span class="font-bold text-slate-200 flex items-center gap-2">
-                            <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
-                            Scraper Execution Log Output:
+            <!-- Panel 1: PBT Scraper -->
+            <div id="scraper-panel-pbt">
+                <div class="px-6 py-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs font-bold text-slate-700 uppercase tracking-wider">PBT Scraper Status:</span>
+                        <span id="cron-badge-status" class="px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wide uppercase bg-slate-200 text-slate-600 border border-slate-300 flex items-center gap-1.5">
+                            <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                            <span>Loading...</span>
                         </span>
-                        <button type="button" onclick="document.getElementById('cron-run-output-box').classList.add('hidden')" class="text-slate-400 hover:text-white text-xs">Close [✕]</button>
                     </div>
-                    <pre id="cron-run-output-text" class="overflow-x-auto whitespace-pre-wrap max-h-60 leading-relaxed text-[11px] text-cyan-300 font-mono"></pre>
+
+                    <!-- Toggle Switch -->
+                    <div class="flex items-center gap-3">
+                        <span class="text-xs font-semibold text-slate-600" id="cron-toggle-label">Cron Disabled</span>
+                        <button type="button" id="cron-toggle-btn" onclick="toggleCronJob()" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none bg-slate-600" role="switch" aria-checked="false" title="Click to Enable/Disable PBT Cron">
+                            <span id="cron-toggle-knob" class="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow ring-0" style="transform: translateX(0px); transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);"></span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="p-6">
+                    <form id="cron-config-form" onsubmit="saveCronConfig(event)" class="space-y-6">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <!-- Scraping Exam Month -->
+                            <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                                    Scraping Exam Month <span class="text-red-500">*</span>
+                                </label>
+                                <select id="cron-target-month" name="target_month" class="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none transition">
+                                    <option value="01">01 - January</option>
+                                    <option value="02">02 - February</option>
+                                    <option value="03">03 - March</option>
+                                    <option value="04">04 - April</option>
+                                    <option value="05">05 - May</option>
+                                    <option value="06">06 - June</option>
+                                    <option value="07">07 - July</option>
+                                    <option value="08">08 - August</option>
+                                    <option value="09">09 - September</option>
+                                    <option value="10">10 - October</option>
+                                    <option value="11">11 - November</option>
+                                    <option value="12">12 - December</option>
+                                </select>
+                                <p class="text-[11px] text-slate-400 mt-1.5">Exam session month to scrape</p>
+                            </div>
+
+                            <!-- Target Exam Year -->
+                            <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                                    Exam Year <span class="text-red-500">*</span>
+                                </label>
+                                <div class="flex items-center">
+                                    <span class="bg-slate-200 text-slate-600 px-3 py-2.5 rounded-l-lg border border-r-0 border-slate-300 text-sm font-bold">20</span>
+                                    <input type="text" id="cron-target-year" name="target_year" maxlength="2" class="w-full bg-white border border-slate-300 rounded-r-lg p-2.5 text-sm font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none transition font-mono" placeholder="26">
+                                </div>
+                                <p class="text-[11px] text-slate-400 mt-1.5">2-digit year (e.g. 26 = 2026)</p>
+                            </div>
+
+                            <!-- Target Center Code -->
+                            <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                                    Center Code
+                                </label>
+                                <select id="cron-center-code" name="center_code" class="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none transition">
+                                    <option value="474">474 - Dhaka Center</option>
+                                    <option value="476">476 - Khulna Center</option>
+                                    <option value="all">All Centers (474, 476)</option>
+                                </select>
+                                <p class="text-[11px] text-slate-400 mt-1.5">Dhaka (474), Khulna (476)</p>
+                            </div>
+
+                            <!-- Auto-Stop Option -->
+                            <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col justify-between">
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                                        Auto-Stop Execution
+                                    </label>
+                                    <label class="flex items-start gap-2 cursor-pointer mt-1">
+                                        <input type="checkbox" id="cron-auto-disable" name="auto_disable_on_complete" value="1" checked class="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500">
+                                        <span class="text-xs text-slate-600 font-medium">Auto-disable cron after all levels (N5–N1) are updated</span>
+                                    </label>
+                                </div>
+                                <p class="text-[11px] text-emerald-600 font-medium mt-1">✓ Automatically halts on completion</p>
+                            </div>
+                        </div>
+
+                        <!-- Live Cron Status Banner -->
+                        <div id="cron-status-banner" class="p-4 rounded-xl border flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-50 border-slate-200 text-slate-700">
+                            <div class="flex items-start gap-3">
+                                <div id="cron-status-icon" class="w-8 h-8 rounded-lg bg-slate-200 text-slate-600 flex items-center justify-center shrink-0 mt-0.5">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                </div>
+                                <div>
+                                    <div class="flex items-center gap-2 flex-wrap">
+                                        <span class="font-bold text-sm text-slate-800" id="cron-status-title">Cron Job Status</span>
+                                        <span id="cron-last-run" class="text-xs text-slate-400 font-mono">Last run: Never</span>
+                                    </div>
+                                    <p class="text-xs text-slate-500 mt-0.5" id="cron-status-desc">Cron is currently disabled. Toggle the switch above to activate automated scraping.</p>
+                                </div>
+                            </div>
+
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <button type="button" onclick="runScraperNow()" id="btn-cron-run-now" class="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5 shadow-sm cursor-pointer">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                    <span id="btn-cron-run-text">Run Now (Test Scrape)</span>
+                                </button>
+                                <button type="button" onclick="resetCronLock()" id="btn-cron-reset" class="px-3 py-2 bg-slate-200 hover:bg-red-50 hover:text-red-600 text-slate-700 text-xs font-semibold rounded-lg transition hidden cursor-pointer">
+                                    Reset Completed Lock
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Footer: Save & Crontab hint -->
+                        <div class="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2">
+                            <div class="text-xs text-slate-500 flex items-center gap-2 flex-wrap">
+                                <span class="font-bold text-slate-700">cPanel Cron Command:</span>
+                                <code class="bg-slate-100 text-slate-800 px-2 py-1 rounded text-[11px] font-mono border border-slate-200 select-all" id="cron-crontab-snippet">
+                                    /usr/local/bin/php <?php echo dirname(__DIR__); ?>/result/cron-job.php >/dev/null 2>&1
+                                </code>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span id="cron-save-feedback" class="text-xs font-semibold text-emerald-600 opacity-0 transition-opacity duration-300">✓ Settings saved successfully!</span>
+                                <button type="submit" id="btn-save-cron" class="bg-slate-900 hover:bg-slate-800 text-white font-medium px-5 py-2.5 rounded-xl text-sm transition shadow-sm flex items-center gap-2 cursor-pointer">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                    <span>Save PBT Scraping Settings</span>
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+
+                    <!-- Live Scraper Output Console -->
+                    <div id="cron-run-output-box" class="hidden mt-5 p-4 rounded-xl bg-slate-950 border border-slate-800 text-cyan-400 font-mono text-xs">
+                        <div class="flex justify-between items-center mb-2 pb-2 border-b border-slate-800">
+                            <span class="font-bold text-slate-200 flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+                                PBT Scraper Log Output:
+                            </span>
+                            <button type="button" onclick="document.getElementById('cron-run-output-box').classList.add('hidden')" class="text-slate-400 hover:text-white text-xs cursor-pointer">Close [✕]</button>
+                        </div>
+                        <pre id="cron-run-output-text" class="overflow-x-auto whitespace-pre-wrap max-h-60 leading-relaxed text-[11px] text-cyan-300 font-mono"></pre>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel 2: CBT Scraper -->
+            <div id="scraper-panel-cbt" class="hidden">
+                <div class="px-6 py-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs font-bold text-slate-700 uppercase tracking-wider">CBT Scraper Status:</span>
+                        <span id="cbt-cron-badge-status" class="px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wide uppercase bg-slate-200 text-slate-600 border border-slate-300 flex items-center gap-1.5">
+                            <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                            <span>Loading...</span>
+                        </span>
+                    </div>
+
+                    <!-- Toggle Switch -->
+                    <div class="flex items-center gap-3">
+                        <span class="text-xs font-semibold text-slate-600" id="cbt-cron-toggle-label">CBT Cron Disabled</span>
+                        <button type="button" id="cbt-cron-toggle-btn" onclick="toggleCbtCronJob()" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none bg-slate-600" role="switch" aria-checked="false" title="Click to Enable/Disable CBT Cron">
+                            <span id="cbt-cron-toggle-knob" class="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow ring-0" style="transform: translateX(0px); transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);"></span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="p-6">
+                    <form id="cbt-cron-config-form" onsubmit="saveCbtCronConfig(event)" class="space-y-6">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <!-- Target Center Code -->
+                            <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                                    Exam Center Code
+                                </label>
+                                <select id="cbt-cron-center-code" name="center_code" class="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-purple-500 outline-none transition">
+                                    <option value="all">All Centers (474 Dhaka, 476 Khulna)</option>
+                                    <option value="474">474 - Dhaka Center</option>
+                                    <option value="476">476 - Khulna Center</option>
+                                </select>
+                                <p class="text-[11px] text-slate-400 mt-1.5">Scrapes examinees for selected center</p>
+                            </div>
+
+                            <!-- KNOWN_OLD_DATA Input Field -->
+                            <div class="md:col-span-2 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                <div class="flex items-center justify-between mb-1.5">
+                                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                                        KNOWN_OLD_DATA (Baseline Cutoff String) <span class="text-purple-600">*</span>
+                                    </label>
+                                    <span class="text-[11px] font-mono text-purple-600 font-semibold">Weekly Variable</span>
+                                </div>
+                                <input type="text" id="cbt-cron-known-old-data" name="known_old_data" class="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-xs text-slate-900 font-mono font-bold focus:ring-2 focus:ring-purple-500 outline-none transition" placeholder="For tests held through November 2, 2026 (Mon)">
+                                <p class="text-[11px] text-slate-500 mt-1.5">
+                                    If website data matches this text, result is treated as <strong>not updated</strong> yet. When website changes to a new date, new results will be published/updated.
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Live CBT Cron Status Banner -->
+                        <div id="cbt-cron-status-banner" class="p-4 rounded-xl border flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-50 border-slate-200 text-slate-700">
+                            <div class="flex items-start gap-3">
+                                <div id="cbt-cron-status-icon" class="w-8 h-8 rounded-lg bg-slate-200 text-slate-600 flex items-center justify-center shrink-0 mt-0.5">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                </div>
+                                <div>
+                                    <div class="flex items-center gap-2 flex-wrap">
+                                        <span class="font-bold text-sm text-slate-800" id="cbt-cron-status-title">CBT Cron Job Status</span>
+                                        <span id="cbt-cron-last-run" class="text-xs text-slate-400 font-mono">Last run: Never</span>
+                                    </div>
+                                    <p class="text-xs text-slate-500 mt-0.5" id="cbt-cron-status-desc">CBT Scraper is currently disabled. Toggle the switch above to activate automated weekly scraping.</p>
+                                </div>
+                            </div>
+
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <button type="button" onclick="runCbtScraperNow()" id="btn-cbt-cron-run-now" class="px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5 shadow-sm cursor-pointer">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                    <span id="btn-cbt-cron-run-text">Run Now (Test CBT Scrape)</span>
+                                </button>
+                                <button type="button" onclick="resetCbtCronLock()" id="btn-cbt-cron-reset" class="px-3 py-2 bg-slate-200 hover:bg-purple-50 hover:text-purple-700 text-slate-700 text-xs font-semibold rounded-lg transition cursor-pointer" title="Reset cutoff lock to re-process current week's results">
+                                    Reset Cutoff Lock
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Footer: Save & Crontab hint -->
+                        <div class="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2">
+                            <div class="text-xs text-slate-500 flex items-center gap-2 flex-wrap">
+                                <span class="font-bold text-slate-700">cPanel CBT Cron Command:</span>
+                                <code class="bg-slate-100 text-slate-800 px-2 py-1 rounded text-[11px] font-mono border border-slate-200 select-all" id="cbt-cron-crontab-snippet">
+                                    /usr/local/bin/php <?php echo dirname(__DIR__); ?>/result/cbt-cron-job.php >/dev/null 2>&1
+                                </code>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span id="cbt-cron-save-feedback" class="text-xs font-semibold text-purple-600 opacity-0 transition-opacity duration-300">✓ Settings saved successfully!</span>
+                                <button type="submit" id="btn-save-cbt-cron" class="bg-slate-900 hover:bg-slate-800 text-white font-medium px-5 py-2.5 rounded-xl text-sm transition shadow-sm flex items-center gap-2 cursor-pointer">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                    <span>Save CBT Scraping Settings</span>
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+
+                    <!-- Live CBT Scraper Output Console -->
+                    <div id="cbt-cron-run-output-box" class="hidden mt-5 p-4 rounded-xl bg-slate-950 border border-slate-800 text-purple-300 font-mono text-xs">
+                        <div class="flex justify-between items-center mb-2 pb-2 border-b border-slate-800">
+                            <span class="font-bold text-slate-200 flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-purple-400"></span>
+                                CBT Scraper Log Output:
+                            </span>
+                            <button type="button" onclick="document.getElementById('cbt-cron-run-output-box').classList.add('hidden')" class="text-slate-400 hover:text-white text-xs cursor-pointer">Close [✕]</button>
+                        </div>
+                        <pre id="cbt-cron-run-output-text" class="overflow-x-auto whitespace-pre-wrap max-h-60 leading-relaxed text-[11px] text-purple-300 font-mono"></pre>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1245,12 +1559,39 @@ if ($isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action
         </div>
 
         <!-- ── Existing Tables ── -->
-        <div class="mb-4 flex items-center justify-between">
-            <h2 class="text-lg font-bold text-slate-900">Exam Month Tables</h2>
-            <button onclick="loadDashboard()" class="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                Refresh
-            </button>
+        <div class="mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+                <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                    <span>Exam Month Tables</span>
+                    <span id="badge-total-tables" class="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">0</span>
+                </h2>
+                <p class="text-xs text-slate-500 mt-0.5">Uploaded result batches for monthly PBT exams and weekly CBT test sessions.</p>
+            </div>
+
+            <div class="flex items-center gap-2 flex-wrap">
+                <!-- Filter Tabs: All, PBT, CBT -->
+                <div class="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200 text-xs">
+                    <button type="button" id="tab-table-all" onclick="setExamTableFilter('all')" class="px-3.5 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 bg-white text-slate-900 shadow-sm cursor-pointer">
+                        <span>All</span>
+                        <span id="badge-table-count-all" class="px-1.5 py-0.5 rounded-full text-[10px] bg-slate-100 text-slate-700 font-bold">0</span>
+                    </button>
+                    <button type="button" id="tab-table-pbt" onclick="setExamTableFilter('pbt')" class="px-3.5 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5 text-slate-600 hover:text-slate-900 cursor-pointer">
+                        <svg class="w-3.5 h-3.5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                        <span>PBT</span>
+                        <span id="badge-table-count-pbt" class="px-1.5 py-0.5 rounded-full text-[10px] bg-blue-100 text-blue-700 font-bold">0</span>
+                    </button>
+                    <button type="button" id="tab-table-cbt" onclick="setExamTableFilter('cbt')" class="px-3.5 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5 text-slate-600 hover:text-slate-900 cursor-pointer">
+                        <svg class="w-3.5 h-3.5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                        <span>CBT</span>
+                        <span id="badge-table-count-cbt" class="px-1.5 py-0.5 rounded-full text-[10px] bg-purple-100 text-purple-700 font-bold">0</span>
+                    </button>
+                </div>
+
+                <button onclick="loadDashboard()" class="text-xs text-blue-600 hover:text-blue-800 font-medium px-2.5 py-1.5 rounded-lg border border-slate-200 hover:border-blue-300 hover:bg-blue-50 transition flex items-center gap-1 cursor-pointer" title="Refresh Tables">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                    <span>Refresh</span>
+                </button>
+            </div>
         </div>
         <div id="tables-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
             <div class="col-span-full text-center py-12 text-slate-400 text-sm">Loading tables…</div>
@@ -2392,49 +2733,111 @@ if ($isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action
         document.getElementById('preview-section').classList.add('hidden');
     }
 
+    // ─── Exam Month Tables Filtering & Rendering ────────────
+    let currentTablesData = [];
+    let currentExamTableFilter = 'all'; // 'all', 'pbt', 'cbt'
+
+    function setExamTableFilter(filter) {
+        currentExamTableFilter = filter;
+
+        const tabs = [
+            { id: 'tab-table-all', type: 'all' },
+            { id: 'tab-table-pbt', type: 'pbt' },
+            { id: 'tab-table-cbt', type: 'cbt' }
+        ];
+
+        tabs.forEach(t => {
+            const btn = document.getElementById(t.id);
+            if (!btn) return;
+            if (t.type === filter) {
+                btn.className = "px-3.5 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 bg-white text-slate-900 shadow-sm cursor-pointer";
+            } else {
+                btn.className = "px-3.5 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5 text-slate-600 hover:text-slate-900 cursor-pointer";
+            }
+        });
+
+        renderTableCards();
+    }
+
     // ─── Load Dashboard Stats ───────────────────────────────
     async function loadDashboard() {
         try {
             const resp = await fetch('?action=stats');
             const data = await resp.json();
-            const tables = data.tables || [];
+            currentTablesData = data.tables || [];
 
             // Aggregate stats
             let totalRecords = 0, totalPass = 0, totalFail = 0, totalPending = 0;
-            tables.forEach(t => {
+            let cbtCount = 0, pbtCount = 0;
+
+            currentTablesData.forEach(t => {
                 totalRecords += t.total;
                 totalPass    += t.passed;
                 totalFail    += t.failed;
                 totalPending += (t.pending || 0);
+
+                if (t.type === 'CBT' || t.name.endsWith('_CBT')) {
+                    cbtCount++;
+                } else {
+                    pbtCount++;
+                }
             });
 
-            document.getElementById('stat-months').textContent  = tables.length;
+            document.getElementById('stat-months').textContent  = currentTablesData.length;
             document.getElementById('stat-records').textContent = totalRecords.toLocaleString();
             const evaluatedTotal = totalPass + totalFail;
             const overallRate = evaluatedTotal > 0 ? ((totalPass / evaluatedTotal) * 100).toFixed(1) + '%' : (totalPending > 0 ? 'Pending' : '—');
             document.getElementById('stat-pass-rate').textContent = overallRate;
 
-            // Render table cards
-            renderTableCards(tables);
+            // Update badge counts in Exam Month Tables header
+            const bTotal = document.getElementById('badge-total-tables');
+            if (bTotal) bTotal.textContent = currentTablesData.length;
+
+            const bAll = document.getElementById('badge-table-count-all');
+            if (bAll) bAll.textContent = currentTablesData.length;
+
+            const bPbt = document.getElementById('badge-table-count-pbt');
+            if (bPbt) bPbt.textContent = pbtCount;
+
+            const bCbt = document.getElementById('badge-table-count-cbt');
+            if (bCbt) bCbt.textContent = cbtCount;
+
+            // Render table cards with active filter
+            renderTableCards();
         } catch (e) {
             console.error('Failed to load dashboard:', e);
         }
     }
 
     // ─── Render Table Cards ─────────────────────────────────
-    function renderTableCards(tables) {
+    function renderTableCards() {
         const grid = document.getElementById('tables-grid');
+        if (!grid) return;
 
-        if (tables.length === 0) {
+        let filtered = currentTablesData;
+        if (currentExamTableFilter === 'cbt') {
+            filtered = currentTablesData.filter(t => t.type === 'CBT' || t.name.endsWith('_CBT'));
+        } else if (currentExamTableFilter === 'pbt') {
+            filtered = currentTablesData.filter(t => t.type === 'PBT' || t.name.endsWith('_PBT') || (!t.type && !t.name.endsWith('_CBT')));
+        }
+
+        if (filtered.length === 0) {
+            let emptyMsg = 'No exam tables yet. Import a CSV to get started.';
+            if (currentExamTableFilter === 'cbt') {
+                emptyMsg = 'No CBT exam tables found. In the Upload section above, select "CBT (Computer-Based)" to import CBT examinees.';
+            } else if (currentExamTableFilter === 'pbt') {
+                emptyMsg = 'No PBT exam tables found. In the Upload section above, select "PBT (Paper-Based)" to import PBT examinees.';
+            }
+
             grid.innerHTML = `
-                <div class="col-span-full text-center py-16">
+                <div class="col-span-full text-center py-16 bg-white rounded-2xl border border-slate-200">
                     <svg class="w-12 h-12 text-slate-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path></svg>
-                    <p class="text-slate-400 text-sm">No exam tables yet. Import a CSV to get started.</p>
+                    <p class="text-slate-500 font-medium text-sm">${emptyMsg}</p>
                 </div>`;
             return;
         }
 
-        grid.innerHTML = tables.map(t => {
+        grid.innerHTML = filtered.map(t => {
             const pendingCount = t.pending || 0;
             const evaluated = t.passed + t.failed;
             const rate = evaluated > 0 ? ((t.passed / evaluated) * 100).toFixed(1) : (pendingCount > 0 ? 'Pending' : '0');
@@ -2442,11 +2845,11 @@ if ($isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action
 
             let badgeHtml = '';
             if (t.type === 'CBT' || t.name.endsWith('_CBT')) {
-                badgeHtml = '<span class="px-2 py-0.5 rounded text-[10px] font-bold tracking-wide uppercase bg-purple-100 text-purple-700 border border-purple-200">CBT</span>';
+                badgeHtml = '<span class="px-2 py-0.5 rounded text-[10px] font-bold tracking-wide uppercase bg-purple-100 text-purple-700 border border-purple-200 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-purple-500"></span>CBT</span>';
             } else if (t.type === 'PBT' || t.name.endsWith('_PBT')) {
-                badgeHtml = '<span class="px-2 py-0.5 rounded text-[10px] font-bold tracking-wide uppercase bg-blue-100 text-blue-700 border border-blue-200">PBT</span>';
+                badgeHtml = '<span class="px-2 py-0.5 rounded text-[10px] font-bold tracking-wide uppercase bg-blue-100 text-blue-700 border border-blue-200 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-blue-500"></span>PBT</span>';
             } else {
-                badgeHtml = '<span class="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">Legacy</span>';
+                badgeHtml = '<span class="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">Legacy PBT</span>';
             }
 
             return `
@@ -2457,7 +2860,7 @@ if ($isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action
                                 <h3 class="text-lg font-bold text-slate-900">${escapeHtml(t.name)}</h3>
                                 ${badgeHtml}
                             </div>
-                            <button onclick="deleteTable('${escapeHtml(t.name)}')" class="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-500 p-1" title="Delete table">
+                            <button onclick="deleteTable('${escapeHtml(t.name)}')" class="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-500 p-1 cursor-pointer" title="Delete table">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                             </button>
                         </div>
@@ -2549,6 +2952,7 @@ if ($isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action
         const toggleKnob  = document.getElementById('cron-toggle-knob');
         const toggleLabel = document.getElementById('cron-toggle-label');
         const badgeStatus = document.getElementById('cron-badge-status');
+        const tabBadgePbt = document.getElementById('tab-badge-pbt');
         const lastRunSpan = document.getElementById('cron-last-run');
         const statusTitle = document.getElementById('cron-status-title');
         const statusDesc  = document.getElementById('cron-status-desc');
@@ -2557,6 +2961,17 @@ if ($isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action
         const statusIcon  = document.getElementById('cron-status-icon');
 
         const isEnabled = !!cfg.enabled;
+
+        // Update header tab badge
+        if (tabBadgePbt) {
+            if (isEnabled) {
+                tabBadgePbt.className = 'px-2 py-0.5 rounded-full text-[10px] bg-blue-500/20 text-blue-300 font-bold border border-blue-500/30';
+                tabBadgePbt.textContent = 'ON';
+            } else {
+                tabBadgePbt.className = 'px-2 py-0.5 rounded-full text-[10px] bg-slate-700 text-slate-300 font-bold';
+                tabBadgePbt.textContent = 'OFF';
+            }
+        }
 
         // Toggle Switch visual state
         if (toggleBtn && toggleKnob) {
@@ -2809,8 +3224,10 @@ if ($isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action
             }
 
             if (data) {
-                if (data.output || data.logs) {
-                    outText.textContent = data.output || (Array.isArray(data.logs) ? data.logs.join('\n') : JSON.stringify(data, null, 2));
+                if (data.output && data.output.trim() !== '') {
+                    outText.textContent = data.output;
+                } else if (Array.isArray(data.logs) && data.logs.length > 0) {
+                    outText.textContent = data.logs.join('\n');
                 } else if (data.message) {
                     outText.textContent = data.message;
                 } else if (data.error) {
@@ -2834,6 +3251,324 @@ if ($isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action
             btn.disabled = false;
             btn.classList.remove('opacity-75');
             btnText.textContent = 'Run Now (Test Scrape)';
+        }
+    }
+
+    // ─── Scraper Tabs (PBT vs CBT) ────────────────────────────
+    function switchScraperTab(tab) {
+        const pbtTab = document.getElementById('tab-scraper-pbt');
+        const cbtTab = document.getElementById('tab-scraper-cbt');
+        const pbtPanel = document.getElementById('scraper-panel-pbt');
+        const cbtPanel = document.getElementById('scraper-panel-cbt');
+
+        if (tab === 'pbt') {
+            if (pbtTab) pbtTab.className = 'px-4 py-2.5 text-xs font-bold rounded-t-xl border-b-2 transition flex items-center gap-2 border-blue-500 text-blue-400 bg-slate-800/80 cursor-pointer';
+            if (cbtTab) cbtTab.className = 'px-4 py-2.5 text-xs font-semibold rounded-t-xl border-b-2 transition flex items-center gap-2 border-transparent text-slate-400 hover:text-white cursor-pointer';
+            if (pbtPanel) pbtPanel.classList.remove('hidden');
+            if (cbtPanel) cbtPanel.classList.add('hidden');
+        } else {
+            if (cbtTab) cbtTab.className = 'px-4 py-2.5 text-xs font-bold rounded-t-xl border-b-2 transition flex items-center gap-2 border-purple-500 text-purple-400 bg-slate-800/80 cursor-pointer';
+            if (pbtTab) pbtTab.className = 'px-4 py-2.5 text-xs font-semibold rounded-t-xl border-b-2 transition flex items-center gap-2 border-transparent text-slate-400 hover:text-white cursor-pointer';
+            if (cbtPanel) cbtPanel.classList.remove('hidden');
+            if (pbtPanel) pbtPanel.classList.add('hidden');
+        }
+    }
+
+    // ─── CBT Result Scraper JavaScript ────────────────────────
+    let currentCbtCronConfig = null;
+
+    async function loadCbtCronConfig() {
+        try {
+            const resp = await fetch(ADMIN_API_URL + '?action=get_cbt_cron_config');
+            const data = await resp.json();
+            if (!data.success) return;
+
+            currentCbtCronConfig = data.config;
+            const metrics = data.metrics || {};
+
+            // Populate form values
+            const cSelect = document.getElementById('cbt-cron-center-code');
+            const knownOldInput = document.getElementById('cbt-cron-known-old-data');
+
+            if (cSelect && currentCbtCronConfig.center_code) cSelect.value = currentCbtCronConfig.center_code;
+            if (knownOldInput) {
+                knownOldInput.value = currentCbtCronConfig.known_old_data || currentCbtCronConfig.last_published_cutoff || '';
+            }
+
+            updateCbtCronUI(currentCbtCronConfig, metrics);
+        } catch (e) {
+            console.error('Failed to load CBT cron config:', e);
+        }
+    }
+
+    function updateCbtCronUI(cfg, metrics = {}) {
+        const toggleBtn    = document.getElementById('cbt-cron-toggle-btn');
+        const toggleKnob   = document.getElementById('cbt-cron-toggle-knob');
+        const toggleLabel  = document.getElementById('cbt-cron-toggle-label');
+        const badgeStatus  = document.getElementById('cbt-cron-badge-status');
+        const tabBadge     = document.getElementById('tab-badge-cbt');
+        const lastRunSpan  = document.getElementById('cbt-cron-last-run');
+        const statusTitle  = document.getElementById('cbt-cron-status-title');
+        const statusDesc   = document.getElementById('cbt-cron-status-desc');
+        const statusBanner = document.getElementById('cbt-cron-status-banner');
+        const statusIcon   = document.getElementById('cbt-cron-status-icon');
+
+        const isEnabled = !!cfg.enabled;
+
+        // Header Tab Badge
+        if (tabBadge) {
+            if (isEnabled) {
+                tabBadge.className = 'px-2 py-0.5 rounded-full text-[10px] bg-purple-500/20 text-purple-300 font-bold border border-purple-500/30';
+                tabBadge.textContent = 'ON';
+            } else {
+                tabBadge.className = 'px-2 py-0.5 rounded-full text-[10px] bg-slate-700 text-slate-300 font-bold';
+                tabBadge.textContent = 'OFF';
+            }
+        }
+
+        // Toggle Switch visual state
+        if (toggleBtn && toggleKnob) {
+            toggleBtn.setAttribute('aria-checked', isEnabled ? 'true' : 'false');
+            toggleKnob.style.transition = 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)';
+            if (isEnabled) {
+                toggleBtn.className = 'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none bg-purple-600 shadow-sm shadow-purple-600/30';
+                toggleKnob.style.transform = 'translateX(20px)';
+                if (toggleLabel) toggleLabel.textContent = 'CBT Cron Enabled';
+            } else {
+                toggleBtn.className = 'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none bg-slate-600';
+                toggleKnob.style.transform = 'translateX(0px)';
+                if (toggleLabel) toggleLabel.textContent = 'CBT Cron Disabled';
+            }
+        }
+
+        if (lastRunSpan) {
+            lastRunSpan.textContent = cfg.last_run ? `Last run: ${cfg.last_run}` : 'Last run: Never';
+        }
+
+        if (!isEnabled) {
+            if (badgeStatus) {
+                badgeStatus.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wide uppercase bg-slate-200 text-slate-600 border border-slate-300 flex items-center gap-1.5';
+                badgeStatus.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span> DISABLED';
+            }
+            if (statusTitle) statusTitle.textContent = 'CBT Scraper is Disabled (OFF)';
+            if (statusDesc) statusDesc.textContent = 'Weekly CBT result scraping is currently disabled. Toggle the switch above to activate automatic monitoring.';
+            if (statusBanner) statusBanner.className = 'p-4 rounded-xl border flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-50 border-slate-200 text-slate-700';
+            if (statusIcon) statusIcon.className = 'w-8 h-8 rounded-lg bg-slate-200 text-slate-600 flex items-center justify-center shrink-0 mt-0.5';
+
+        } else if (cfg.last_status === 'COMPLETED') {
+            if (badgeStatus) {
+                badgeStatus.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wide uppercase bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1.5';
+                badgeStatus.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> COMPLETED (SYNCED)';
+            }
+            if (statusTitle) statusTitle.textContent = 'CBT Results Synced Successfully';
+            if (statusDesc) statusDesc.textContent = cfg.last_message || `Official results through ${cfg.last_published_cutoff} processed and database updated.`;
+            if (statusBanner) statusBanner.className = 'p-4 rounded-xl border flex flex-col md:flex-row md:items-center justify-between gap-3 bg-emerald-50 border-emerald-200 text-emerald-900';
+            if (statusIcon) statusIcon.className = 'w-8 h-8 rounded-lg bg-emerald-200 text-emerald-800 flex items-center justify-center shrink-0 mt-0.5';
+
+        } else if (cfg.last_status === 'WAITING') {
+            if (badgeStatus) {
+                badgeStatus.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wide uppercase bg-purple-100 text-purple-800 border border-purple-300 flex items-center gap-1.5';
+                badgeStatus.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse"></span> STANDING BY';
+            }
+            if (statusTitle) statusTitle.textContent = 'Monitoring: Waiting for Next Weekly CBT Release';
+            if (statusDesc) statusDesc.textContent = cfg.last_message || 'Website results are current. Standing by for next release.';
+            if (statusBanner) statusBanner.className = 'p-4 rounded-xl border flex flex-col md:flex-row md:items-center justify-between gap-3 bg-purple-50 border-purple-200 text-purple-900';
+            if (statusIcon) statusIcon.className = 'w-8 h-8 rounded-lg bg-purple-200 text-purple-800 flex items-center justify-center shrink-0 mt-0.5';
+
+        } else {
+            if (badgeStatus) {
+                badgeStatus.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wide uppercase bg-purple-100 text-purple-800 border border-purple-300 flex items-center gap-1.5';
+                badgeStatus.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse"></span> ACTIVE (MONITORING)';
+            }
+            if (statusTitle) statusTitle.textContent = 'CBT Scraper Active & Ready';
+            if (statusDesc) statusDesc.textContent = 'Cron will check weekly CBT result releases and immediately sync results to the database.';
+            if (statusBanner) statusBanner.className = 'p-4 rounded-xl border flex flex-col md:flex-row md:items-center justify-between gap-3 bg-purple-50 border-purple-200 text-purple-900';
+            if (statusIcon) statusIcon.className = 'w-8 h-8 rounded-lg bg-purple-200 text-purple-800 flex items-center justify-center shrink-0 mt-0.5';
+        }
+    }
+
+    async function toggleCbtCronJob() {
+        const toggleBtn = document.getElementById('cbt-cron-toggle-btn');
+        const toggleKnob = document.getElementById('cbt-cron-toggle-knob');
+        const toggleLabel = document.getElementById('cbt-cron-toggle-label');
+        if (!currentCbtCronConfig) return;
+
+        const willEnable = !currentCbtCronConfig.enabled;
+        toggleBtn.disabled = true;
+
+        toggleBtn.setAttribute('aria-checked', willEnable ? 'true' : 'false');
+        if (willEnable) {
+            toggleBtn.className = 'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none bg-purple-600 shadow-sm shadow-purple-600/30';
+            toggleKnob.style.transform = 'translateX(20px)';
+            if (toggleLabel) toggleLabel.textContent = 'CBT Cron Enabled';
+        } else {
+            toggleBtn.className = 'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none bg-slate-600';
+            toggleKnob.style.transform = 'translateX(0px)';
+            if (toggleLabel) toggleLabel.textContent = 'CBT Cron Disabled';
+        }
+
+        try {
+            const formData = new URLSearchParams();
+            formData.append('action', 'toggle_cbt_cron');
+            formData.append('enabled', willEnable ? '1' : '0');
+
+            const resp = await fetch(ADMIN_API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: formData.toString()
+            });
+
+            const data = await resp.json();
+            if (data.success) {
+                currentCbtCronConfig.enabled = data.enabled;
+                loadCbtCronConfig();
+            } else {
+                alert(data.error || 'Failed to toggle CBT cron job.');
+                loadCbtCronConfig();
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Connection error: ' + (e.message || 'Could not communicate with server.'));
+            loadCbtCronConfig();
+        } finally {
+            toggleBtn.disabled = false;
+        }
+    }
+
+    async function saveCbtCronConfig(e) {
+        if (e) e.preventDefault();
+
+        const form = document.getElementById('cbt-cron-config-form');
+        const saveBtn = document.getElementById('btn-save-cbt-cron');
+        const feedback = document.getElementById('cbt-cron-save-feedback');
+
+        saveBtn.disabled = true;
+        saveBtn.classList.add('opacity-70');
+
+        try {
+            const formData = new FormData(form);
+            formData.append('action', 'save_cbt_cron_config');
+
+            const resp = await fetch(ADMIN_API_URL, {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await resp.json();
+            if (data.success) {
+                currentCbtCronConfig = data.config;
+                feedback.classList.remove('opacity-0');
+                setTimeout(() => feedback.classList.add('opacity-0'), 2500);
+                loadCbtCronConfig();
+            } else {
+                alert(data.error || 'Failed to save CBT settings.');
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Error saving CBT cron configuration: ' + (e.message || e));
+        } finally {
+            saveBtn.disabled = false;
+            saveBtn.classList.remove('opacity-70');
+        }
+    }
+
+    async function resetCbtCronLock() {
+        if (!confirm('Are you sure you want to reset the CBT cutoff lock? This will allow the scraper to re-process and re-sync the latest result batch.')) {
+            return;
+        }
+
+        try {
+            const formData = new URLSearchParams();
+            formData.append('action', 'reset_cbt_cron_status');
+
+            const resp = await fetch(ADMIN_API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: formData.toString()
+            });
+            const data = await resp.json();
+            if (data.success) {
+                alert(data.message || 'CBT KNOWN_OLD_DATA reset successfully.');
+                const knownOldInput = document.getElementById('cbt-cron-known-old-data');
+                if (knownOldInput) knownOldInput.value = '';
+                loadCbtCronConfig();
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Error resetting CBT status lock.');
+        }
+    }
+
+    async function runCbtScraperNow() {
+        const btn = document.getElementById('btn-cbt-cron-run-now');
+        const btnText = document.getElementById('btn-cbt-cron-run-text');
+        const outBox = document.getElementById('cbt-cron-run-output-box');
+        const outText = document.getElementById('cbt-cron-run-output-text');
+
+        btn.disabled = true;
+        btn.classList.add('opacity-75');
+        btnText.textContent = 'Scraping CBT...';
+
+        outBox.classList.remove('hidden');
+        outText.textContent = 'Connecting to nat-test.jp and scraping weekly CBT results... Please wait...\n';
+
+        const targetCenter = document.getElementById('cbt-cron-center-code')?.value || (currentCbtCronConfig?.center_code || 'all');
+
+        try {
+            const formData = new URLSearchParams();
+            formData.append('action', 'run_cbt_cron_now');
+            formData.append('center_code', targetCenter);
+
+            const adminResp = await fetch(ADMIN_API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: formData.toString()
+            });
+
+            if (!adminResp.ok) {
+                const rawText = await adminResp.text();
+                outText.textContent = `❌ Server Error (HTTP ${adminResp.status}):\n${rawText || adminResp.statusText}`;
+                return;
+            }
+
+            // Stream log output in real time
+            if (adminResp.body && typeof adminResp.body.getReader === 'function') {
+                const reader = adminResp.body.getReader();
+                const decoder = new TextDecoder('utf-8');
+                let isFirstChunk = true;
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    let chunk = decoder.decode(value, { stream: true });
+                    if (isFirstChunk) {
+                        chunk = chunk.replace(/^:[ ]*\n/, '');
+                        if (chunk.trim() !== '') {
+                            outText.textContent = '';
+                            isFirstChunk = false;
+                        }
+                    }
+                    if (chunk) {
+                        outText.textContent += chunk;
+                        outText.scrollTop = outText.scrollHeight;
+                    }
+                }
+            } else {
+                const rawText = await adminResp.text();
+                outText.textContent = rawText.replace(/^:[ ]*\n/, '');
+            }
+
+            loadCbtCronConfig();
+            loadDashboard();
+
+        } catch (e) {
+            console.error('CBT Scraper run error:', e);
+            outText.textContent = 'Execution error: ' + (e.message || 'Could not communicate with server.');
+        } finally {
+            btn.disabled = false;
+            btn.classList.remove('opacity-75');
+            btnText.textContent = 'Run Now (Test CBT Scrape)';
         }
     }
 
@@ -3436,6 +4171,7 @@ if ($isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action
 
     loadDashboard();
     loadCronConfig();
+    loadCbtCronConfig();
     loadUsersList();
     loadExcludedDays();
     </script>

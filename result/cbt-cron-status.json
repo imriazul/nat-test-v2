@@ -1,0 +1,8 @@
+{
+    "status": "INITIALIZED",
+    "last_check": null,
+    "last_cutoff": null,
+    "total_passed": 0,
+    "total_updated": 0,
+    "history": []
+}
