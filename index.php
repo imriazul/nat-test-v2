@@ -1,6 +1,6 @@
 <?php
 
-$pageTitle    = 'NAT-TEST Result Check Online | PBT & CBT Result';
+$pageTitle    = 'Check NAT-TEST Result Online | NAT-TEST BD — PBT & CBT Result';
 $pageDesc     = 'Check your official NAT-TEST Result online. Fast, verified score and accurate result for PBT and CBT NAT-TEST.';
 $pageKeywords = 'NAT-TEST Result, NAT-TEST BD, NAT-TEST, CBT NAT-TEST, PBT NAT-TEST, NAT-TEST result check, Japanese language proficiency exam BD';
 

@@ -1,8 +1,38 @@
 {
-    "status": "INITIALIZED",
-    "last_check": null,
-    "last_cutoff": null,
-    "total_passed": 0,
-    "total_updated": 0,
-    "history": []
+    "status": "COMPLETED",
+    "last_check": "2026-11-12 09:45:02",
+    "last_cutoff": "For tests held through November 9, 2026 (Mon)",
+    "total_passed": 198,
+    "total_updated": 466,
+    "history": [
+        {
+            "timestamp": "2026-11-12 09:45:02",
+            "cutoff": "For tests held through November 9, 2026 (Mon)",
+            "total_passed": 198,
+            "passed_dhaka": 185,
+            "passed_khulna": 13,
+            "updated_pass": 185,
+            "updated_fail": 281
+        },
+        {
+            "timestamp": "2026-11-12 09:39:50",
+            "cutoff": "For tests held through November 9, 2026 (Mon)",
+            "total_passed": 198,
+            "passed_dhaka": 185,
+            "passed_khulna": 13,
+            "updated_pass": 185,
+            "updated_fail": 281
+        },
+        {
+            "timestamp": "2026-11-12 09:26:37",
+            "cutoff": "For tests held through November 9, 2026 (Mon)",
+            "total_passed": 198,
+            "passed_dhaka": 185,
+            "passed_khulna": 13,
+            "updated_pass": 23,
+            "updated_fail": 46
+        }
+    ],
+    "total_passed_updated": 185,
+    "total_failed_updated": 281
 }

@@ -1,11 +1,11 @@
 {
     "enabled": false,
-    "target_month": "10",
+    "target_month": "06",
     "target_year": "26",
     "center_code": "474",
     "auto_disable_on_complete": true,
-    "last_run": "2026-11-07 20:42:51",
+    "last_run": "2026-11-13 20:03:13",
     "last_status": "COMPLETED",
-    "updated_at": "2026-11-07 14:36:53",
-    "last_message": "Results published & database updated (826 Pass, 1716 Fail). Cron auto-disabled."
+    "updated_at": "2026-11-13 14:02:48",
+    "last_message": "Results published & database updated (1447 Pass, 1939 Fail). Cron auto-disabled."
 }
