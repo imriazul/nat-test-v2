@@ -1126,7 +1126,7 @@ if ($isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action
                                 <span id="cron-save-feedback" class="text-xs font-semibold text-emerald-600 opacity-0 transition-opacity duration-300">✓ Settings saved successfully!</span>
                                 <button type="submit" id="btn-save-cron" class="bg-slate-900 hover:bg-slate-800 text-white font-medium px-5 py-2.5 rounded-xl text-sm transition shadow-sm flex items-center gap-2 cursor-pointer">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                                    <span>Save PBT Scraping Settings</span>
+                                    <span>Save Settings</span>
                                 </button>
                             </div>
                         </div>
@@ -1235,7 +1235,7 @@ if ($isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action
                                 <span id="cbt-cron-save-feedback" class="text-xs font-semibold text-purple-600 opacity-0 transition-opacity duration-300">✓ Settings saved successfully!</span>
                                 <button type="submit" id="btn-save-cbt-cron" class="bg-slate-900 hover:bg-slate-800 text-white font-medium px-5 py-2.5 rounded-xl text-sm transition shadow-sm flex items-center gap-2 cursor-pointer">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                                    <span>Save CBT Scraping Settings</span>
+                                    <span>Save Settings</span>
                                 </button>
                             </div>
                         </div>
@@ -2820,6 +2820,25 @@ if ($isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action
         } else if (currentExamTableFilter === 'pbt') {
             filtered = currentTablesData.filter(t => t.type === 'PBT' || t.name.endsWith('_PBT') || (!t.type && !t.name.endsWith('_CBT')));
         }
+
+        // Sort chronologically by Year, then Calendar Month (Jan -> Dec), then Name
+        const monthOrder = {
+            'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4,
+            'May': 5, 'Jun': 6, 'Jul': 7, 'Aug': 8,
+            'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12
+        };
+
+        filtered = [...filtered].sort((a, b) => {
+            const yA = parseInt(a.year, 10) || 0;
+            const yB = parseInt(b.year, 10) || 0;
+            if (yA !== yB) return yA - yB;
+
+            const mA = monthOrder[a.month] || 99;
+            const mB = monthOrder[b.month] || 99;
+            if (mA !== mB) return mA - mB;
+
+            return (a.name || '').localeCompare(b.name || '');
+        });
 
         if (filtered.length === 0) {
             let emptyMsg = 'No exam tables yet. Import a CSV to get started.';

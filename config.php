@@ -277,6 +277,29 @@ function getMonthTables($pdo) {
         }
     }
 
+    // Sort tables chronologically by Year, then Month (Jan -> Dec), then Name
+    $monthOrder = [
+        'Jan' => 1, 'Feb' => 2, 'Mar' => 3, 'Apr' => 4,
+        'May' => 5, 'Jun' => 6, 'Jul' => 7, 'Aug' => 8,
+        'Sep' => 9, 'Oct' => 10, 'Nov' => 11, 'Dec' => 12
+    ];
+
+    usort($tables, function ($a, $b) use ($monthOrder) {
+        $yearA = (int)($a['year'] ?? 0);
+        $yearB = (int)($b['year'] ?? 0);
+        if ($yearA !== $yearB) {
+            return $yearA <=> $yearB;
+        }
+
+        $mA = $monthOrder[$a['month'] ?? ''] ?? 99;
+        $mB = $monthOrder[$b['month'] ?? ''] ?? 99;
+        if ($mA !== $mB) {
+            return $mA <=> $mB;
+        }
+
+        return strcmp($a['name'] ?? '', $b['name'] ?? '');
+    });
+
     return $tables;
 }
 

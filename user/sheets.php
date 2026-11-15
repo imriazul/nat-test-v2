@@ -16,6 +16,12 @@ if (!$isUserLoggedIn) {
     exit;
 }
 
+// Determine administrator privileges (admin can see/register from today, regular users from tomorrow)
+$adminSessionKey = $_ENV['ADMIN_SESSION_NAME'] ?? 'admin_logged_in';
+$isAdmin = (!empty($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'] === true)
+        || (!empty($_SESSION[$adminSessionKey]) && $_SESSION[$adminSessionKey] === true)
+        || (isset($_SESSION[$user_session_name . '_role']) && $_SESSION[$user_session_name . '_role'] === 'admin');
+
 // Set strict security headers
 @header('Content-Type: application/json; charset=UTF-8');
 @header('X-Content-Type-Options: nosniff');
@@ -129,11 +135,14 @@ if ($action === 'data' || !empty($sheetParam)) {
         exit;
     }
 
-    // Enforce that reservations are only allowed for future dates (starting from tomorrow)
-    $minDate = date('Y/m/d', strtotime('+1 day'));
+    // Enforce date restrictions:
+    // Administrator: allowed from today onward (past dates strictly blocked)
+    // Regular users: allowed strictly from tomorrow onward (today & past dates blocked)
+    $minDate = $isAdmin ? date('Y/m/d') : date('Y/m/d', strtotime('+1 day'));
     if ($targetSheet < $minDate) {
         http_response_code(400);
-        echo json_encode(["error" => "Exam reservations are only available starting from tomorrow onward."]);
+        $minDateLabel = $isAdmin ? "today" : "tomorrow";
+        echo json_encode(["error" => "Exam reservations are only available starting from {$minDateLabel} onward. Past dates cannot be accessed."]);
         exit;
     }
 
@@ -198,17 +207,20 @@ if ($action === 'data' || !empty($sheetParam)) {
 }
 
 // ─── ACTION: List Available Date Sheets ───────────────────────
-// 1. Determine "Today" and "Tomorrow" (enforce reservations strictly from tomorrow onward)
+// 1. Determine "Today" and "Tomorrow"
+$serverToday = date('Y/m/d');
 $todayInput = $_GET['today'] ?? '';
 if (!empty($todayInput) && preg_match('#^\d{4}[-/]\d{2}[-/]\d{2}$#', $todayInput)) {
-    $today = str_replace('-', '/', $todayInput);
+    $clientToday = str_replace('-', '/', $todayInput);
+    // Never allow a date earlier than actual server today
+    $today = max($clientToday, $serverToday);
 } else {
-    $today = date('Y/m/d');
+    $today = $serverToday;
 }
 
-// Reservations are strictly open from tomorrow onward (no past dates or today)
+// Reservations: admins can view/book from today onward, regular users strictly from tomorrow onward
 $tomorrow = date('Y/m/d', strtotime(str_replace('/', '-', $today) . ' +1 day'));
-$minDate  = $tomorrow;
+$minDate  = $isAdmin ? $today : $tomorrow;
 
 // 2. Determine Range Mode
 $days  = isset($_GET['days']) ? (int)$_GET['days'] : null;
@@ -220,18 +232,18 @@ if ($range === '15days') $days = 15;
 if (!empty($_GET['start']) && !empty($_GET['end'])
     && preg_match('#^\d{4}[-/]\d{2}[-/]\d{2}$#', $_GET['start'])
     && preg_match('#^\d{4}[-/]\d{2}[-/]\d{2}$#', $_GET['end'])) {
-    // Custom start and end date (must not be earlier than tomorrow)
+    // Custom start and end date (must not be earlier than minDate)
     $reqStart  = str_replace('-', '/', $_GET['start']);
     $startDate = max($reqStart, $minDate);
     $endDate   = str_replace('-', '/', $_GET['end']);
     $filterType = 'custom';
 } elseif ($days !== null && $days > 0 && $days <= 365) {
-    // Next N days starting from tomorrow
+    // Next N days starting from minDate
     $startDate = $minDate;
     $endDate   = date('Y/m/d', strtotime(str_replace('/', '-', $today) . " +{$days} days"));
     $filterType = 'days';
 } else {
-    // Default: From tomorrow onward for the current month
+    // Default: From minDate onward for the current month
     $startDate = $minDate;
     $currentMonthPrefix = substr($today, 0, 7) . '/';
     $filterType = 'month';
@@ -292,7 +304,7 @@ foreach ($matches as $match) {
 
     // Must match date pattern YYYY/MM/DD
     if (preg_match('#^\d{4}/\d{2}/\d{2}$#', $name)) {
-        // Enforce: strictly exclude all past dates and today (reservations allowed from tomorrow onward)
+        // Enforce: strictly exclude dates before minDate (past dates for admin; today + past dates for users)
         if ($name < $minDate) {
             continue;
         }

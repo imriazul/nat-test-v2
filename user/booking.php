@@ -16,12 +16,18 @@ if (!$isUserLoggedIn) {
     exit;
 }
 
+// Determine administrator privileges (admin can see/register from today, regular users from tomorrow)
+$adminSessionKey = $_ENV['ADMIN_SESSION_NAME'] ?? 'admin_logged_in';
+$isAdmin = (!empty($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'] === true)
+        || (!empty($_SESSION[$adminSessionKey]) && $_SESSION[$adminSessionKey] === true)
+        || (isset($_SESSION[$user_session_name . '_role']) && $_SESSION[$user_session_name . '_role'] === 'admin');
+
 header('Content-Type: application/json; charset=UTF-8');
 header('X-Content-Type-Options: nosniff');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 
 $currentUserId    = (int)($_SESSION[$user_session_name . '_user_id'] ?? 0);
-$currentUserName  = (string)($_SESSION[$user_session_name . '_name'] ?? (!empty($_SESSION['admin_logged_in']) ? 'Administrator' : 'User'));
+$currentUserName  = (string)($_SESSION[$user_session_name . '_name'] ?? ($isAdmin ? 'Administrator' : 'User'));
 $currentUserEmail = (string)($_SESSION[$user_session_name . '_email'] ?? '');
 
 // Strict CSRF Validation for state-changing POST requests
@@ -258,11 +264,12 @@ if ($action === 'check_seat') {
         exit;
     }
 
-    $minBookingDate = date('Y-m-d', strtotime('+1 day'));
+    $minBookingDate = $isAdmin ? date('Y-m-d') : date('Y-m-d', strtotime('+1 day'));
     if ($date < $minBookingDate) {
+        $allowedFrom = $isAdmin ? 'today' : 'tomorrow';
         echo json_encode([
             'success' => false,
-            'error'   => 'Reservations cannot be made for today or past dates. Please choose an exam date from tomorrow onward.'
+            'error'   => "Reservations cannot be made for past dates. Please choose an exam date from {$allowedFrom} onward."
         ]);
         exit;
     }
@@ -487,11 +494,12 @@ if ($action === 'confirm_level' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    $minBookingDate = date('Y-m-d', strtotime('+1 day'));
+    $minBookingDate = $isAdmin ? date('Y-m-d') : date('Y-m-d', strtotime('+1 day'));
     if ($date < $minBookingDate) {
+        $allowedFrom = $isAdmin ? 'today' : 'tomorrow';
         echo json_encode([
             'success' => false,
-            'error'   => 'Reservations cannot be made for today or past dates. Please choose an exam date from tomorrow onward.'
+            'error'   => "Reservations cannot be made for past dates. Please choose an exam date from {$allowedFrom} onward."
         ]);
         exit;
     }
@@ -850,11 +858,23 @@ if ($action === 'submit_registration' && $_SERVER['REQUEST_METHOD'] === 'POST') 
                 exit;
             }
 
+            // Enforce minimum booking date: admins can register from today onward, users from tomorrow onward
+            $holdDate = str_replace('/', '-', trim((string)($hold['date_of_test'] ?? '')));
+            $minBookingDate = $isAdmin ? date('Y-m-d') : date('Y-m-d', strtotime('+1 day'));
+            if (!empty($holdDate) && $holdDate < $minBookingDate) {
+                $allowedFrom = $isAdmin ? 'today' : 'tomorrow';
+                echo json_encode([
+                    'success' => false,
+                    'error'   => "Registration cannot be submitted for past dates. Reservations are only allowed from {$allowedFrom} onward."
+                ]);
+                exit;
+            }
+
             $rem = (int)($hold['remaining_seconds'] ?? 0);
-            $isAdmin = !empty($_SESSION['admin_logged_in']);
+            $isAdminSession = $isAdmin || !empty($_SESSION['admin_logged_in']);
 
             // If the seat is actively held ($rem > 0) by another applicant, only the hold owner (or admin) can register
-            if ($rem > 0 && !$isAdmin && !isHoldOwnedByCurrentSession($hold)) {
+            if ($rem > 0 && !$isAdminSession && !isHoldOwnedByCurrentSession($hold)) {
                 http_response_code(403);
                 echo json_encode(['success' => false, 'error' => 'This workstation is currently on a 15-minute hold by another applicant.']);
                 exit;

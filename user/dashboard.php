@@ -14,6 +14,12 @@ if (!$isUserLoggedIn) {
     exit;
 }
 
+// Determine administrator privileges (admin can see/register from today, regular users from tomorrow)
+$adminSessionKey = $_ENV['ADMIN_SESSION_NAME'] ?? 'admin_logged_in';
+$isAdmin = (!empty($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'] === true)
+        || (!empty($_SESSION[$adminSessionKey]) && $_SESSION[$adminSessionKey] === true)
+        || (isset($_SESSION[$user_session_name . '_role']) && $_SESSION[$user_session_name . '_role'] === 'admin');
+
 // Dynamically compute base URL and paths
 $isHttps = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on')
         || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
@@ -28,7 +34,7 @@ if (basename($appBaseDir) === 'admin' || basename($appBaseDir) === 'common' || b
 $appBaseDir = ($appBaseDir === '/' || $appBaseDir === '.') ? '' : $appBaseDir;
 $siteBaseUrl  = $siteProtocol . '://' . $siteHost . $appBaseDir;
 
-$userName = $_SESSION[$user_session_name . '_name'] ?? (!empty($_SESSION['admin_logged_in']) ? 'Administrator' : 'Authorized Member');
+$userName = $_SESSION[$user_session_name . '_name'] ?? ($isAdmin ? 'Administrator' : 'Authorized Member');
 $userInstitute = $_SESSION[$user_session_name . '_institute'] ?? '';
 ?>
 <!DOCTYPE html>
@@ -736,6 +742,7 @@ $userInstitute = $_SESSION[$user_session_name . '_institute'] ?? '';
         const BOOKING_API = <?php echo json_encode($appBaseDir . '/user/booking'); ?>;
         const LOGIN_URL   = <?php echo json_encode($appBaseDir . '/user/login'); ?>;
         const CSRF_TOKEN  = <?php echo json_encode($_SESSION['csrf_token'] ?? ''); ?>;
+        const IS_ADMIN    = <?php echo json_encode($isAdmin); ?>;
 
         // Active database locks & booking state
         let activeLocks = [];
@@ -928,12 +935,18 @@ $userInstitute = $_SESSION[$user_session_name . '_institute'] ?? '';
                 select.disabled = false;
                 select.innerHTML = `<option value="">-- Choose Exam Date (${availableDates.length} available) --</option>`;
 
+                const clientToday = getClientDate();
                 const clientTomorrow = getClientTomorrow();
                 availableDates.forEach((s, idx) => {
                     const opt = document.createElement("option");
                     opt.value = idx;
-                    const isTomorrow = (s.name === clientTomorrow);
-                    opt.textContent = isTomorrow ? `${s.name} (Tomorrow)` : s.name;
+                    let label = s.name;
+                    if (s.name === clientToday) {
+                        label += ' (Today)';
+                    } else if (s.name === clientTomorrow) {
+                        label += ' (Tomorrow)';
+                    }
+                    opt.textContent = label;
                     select.appendChild(opt);
                 });
 
