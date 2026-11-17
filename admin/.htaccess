@@ -23,6 +23,9 @@ DirectoryIndex index.php
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
+    # Block direct browser requests to internal template partials (/admin/includes/)
+    RewriteRule ^includes(/.*)?$ - [F,L]
+
     # 1. 301 Redirect direct request to index or index.php -> clean admin root /admin/
     RewriteCond %{THE_REQUEST} ^[A-Z]{3,9}\ (.*?/)index(\.php)?(\?[^\ ]*)?\ HTTP/ [NC]
     RewriteRule ^index(\.php)?$ %1 [R=301,L,NE]

@@ -26,7 +26,7 @@ function findExamineeRecord($pdo, $searchQuery) {
         if ($specificTable) {
             $tableCheck = $pdo->query("SHOW TABLES LIKE '$specificTable'");
             if ($tableCheck->rowCount() > 0) {
-                $stmt = $pdo->prepare("SELECT id, examinee_number, name, dob, email, status FROM `$specificTable` WHERE examinee_number = :num LIMIT 1");
+                $stmt = $pdo->prepare("SELECT id, examinee_number, name, dob, email, phone, status FROM `$specificTable` WHERE examinee_number = :num LIMIT 1");
                 $stmt->execute(['num' => $searchQuery]);
                 $row = $stmt->fetch(PDO::FETCH_ASSOC);
                 if ($row) return ['record' => $row, 'table' => $specificTable];
@@ -38,7 +38,7 @@ function findExamineeRecord($pdo, $searchQuery) {
         if ($legacyTable && $legacyTable !== $specificTable) {
             $tableCheck = $pdo->query("SHOW TABLES LIKE '$legacyTable'");
             if ($tableCheck->rowCount() > 0) {
-                $stmt = $pdo->prepare("SELECT id, examinee_number, name, dob, email, status FROM `$legacyTable` WHERE examinee_number = :num LIMIT 1");
+                $stmt = $pdo->prepare("SELECT id, examinee_number, name, dob, email, phone, status FROM `$legacyTable` WHERE examinee_number = :num LIMIT 1");
                 $stmt->execute(['num' => $searchQuery]);
                 $row = $stmt->fetch(PDO::FETCH_ASSOC);
                 if ($row) return ['record' => $row, 'table' => $legacyTable];
@@ -50,7 +50,7 @@ function findExamineeRecord($pdo, $searchQuery) {
     try {
         $tableCheck = $pdo->query("SHOW TABLES LIKE 'examinees'");
         if ($tableCheck->rowCount() > 0) {
-            $stmt = $pdo->prepare("SELECT id, examinee_number, name, dob, email, status FROM examinees WHERE examinee_number = :num LIMIT 1");
+            $stmt = $pdo->prepare("SELECT id, examinee_number, name, dob, email, phone, status FROM examinees WHERE examinee_number = :num LIMIT 1");
             $stmt->execute(['num' => $searchQuery]);
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
             if ($row) return ['record' => $row, 'table' => 'examinees'];
@@ -217,13 +217,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 
     $record = $found['record'];
+    $photoInfo = getExamineePhotoUrl($examineeNumber, true);
+
+    $rawDob = $record['dob'] ?? '';
+    $formattedDob = (!empty($rawDob) && strtotime($rawDob)) ? date('d M Y', strtotime($rawDob)) : ($rawDob ?: '—');
+    $phone = $record['phone'] ?? '';
+
     echo json_encode([
         'success' => true,
         'data'    => [
             'name'            => $record['name'] ?? '',
             'examinee_number' => $record['examinee_number'] ?? '',
-            'dob'             => $record['dob'] ?? '',
-            'status'          => $record['status'] ?? ''
+            'dob'             => $formattedDob,
+            'phone'           => $phone,
+            'status'          => $record['status'] ?? '',
+            'photo_url'       => $photoInfo['url'] ?? '',
+            'photo_is_default'=> (bool)($photoInfo['is_default'] ?? true)
         ]
     ]);
     exit;
@@ -234,6 +243,10 @@ $result = null;
 $searched = false;
 $maskedEmail = '';
 $isVerified = false;
+$examineePhotoUrl = 'uploads/examinees/default-avatar.svg';
+$examineePhotoIsDefault = true;
+$formattedDob = '';
+$examineePhone = '';
 
 $examMonthName = 'September';
 $examYearFull = date('Y');
@@ -313,6 +326,15 @@ if (!empty($searchQuery)) {
         if (!empty($_SESSION[$sessionKey]['verified'])) {
             $isVerified = true;
         }
+
+        $rawDob = $result['dob'] ?? '';
+        $formattedDob = (!empty($rawDob) && strtotime($rawDob)) ? date('d M Y', strtotime($rawDob)) : ($rawDob ?: '—');
+        $examineePhone = $result['phone'] ?? '';
+
+        // Fetch examinee photo (blurred placeholder if unverified, real photo if verified)
+        $photoInfo = getExamineePhotoUrl($result['examinee_number'] ?? '', $isVerified);
+        $examineePhotoUrl = $photoInfo['url'];
+        $examineePhotoIsDefault = $photoInfo['is_default'];
     }
 }
 
@@ -554,11 +576,6 @@ require_once __DIR__ . '/common/header.php';
                                 </div>
                             </div>
 
-                            <!-- Pill Category -->
-                            <div class="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold bg-white/15 backdrop-blur-md text-emerald-200 border border-white/20 mb-3.5 shadow-sm">
-                                <span>✨ Official Result Notification</span>
-                            </div>
-
                             <!-- Main Headline & Dynamic Celebration Message -->
                             <h2 class="text-2xl sm:text-4xl font-black text-white tracking-tight drop-shadow-md mb-3 leading-tight">
                                 <?php echo htmlspecialchars($passHeadline); ?>
@@ -674,21 +691,21 @@ require_once __DIR__ . '/common/header.php';
                 <!-- ══════════════════════════════════════════════════════════════
                      SECTION 2: INFORMATION (BASIC INFO + UNREVEAL INFO)
                 ══════════════════════════════════════════════════════════════ -->
-                <div class="bg-white rounded-3xl p-6 sm:p-9 shadow-xl shadow-slate-900/5 border border-slate-200/90 mb-8">
+                <div class="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-7 lg:p-9 shadow-xl shadow-slate-900/5 border border-slate-200/90 mb-6 sm:mb-8">
                     
                     <!-- SUB-SECTION A: Basic Information (Public / Visible without verification) -->
-                    <div class="mb-8">
-                        <div class="flex items-center justify-between pb-4 mb-6 border-b border-slate-100 flex-wrap gap-3">
-                            <div class="flex items-center gap-3">
-                                <div class="w-10 h-10 rounded-2xl bg-slate-50 border border-slate-200/80 p-1.5 flex items-center justify-center shrink-0">
+                    <div class="mb-6 sm:mb-8">
+                        <div class="flex items-center justify-between pb-3 sm:pb-4 mb-4 sm:mb-6 border-b border-slate-100 gap-2">
+                            <div class="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                                <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-slate-50 border border-slate-200/80 p-1 flex items-center justify-center shrink-0">
                                     <picture>
                                         <source srcset="<?php echo htmlspecialchars($logoWebpUrl ?? 'logo.webp'); ?>" type="image/webp">
-                                        <img src="<?php echo htmlspecialchars($logoUrl ?? 'logo.png'); ?>" alt="NAT-TEST Logo" width="32" height="32" loading="lazy" decoding="async" class="w-full h-full object-contain">
+                                        <img src="<?php echo htmlspecialchars($logoUrl ?? 'logo.png'); ?>" alt="NAT-TEST Logo" width="28" height="28" loading="lazy" decoding="async" class="w-full h-full object-contain">
                                     </picture>
                                 </div>
-                                <div>
-                                    <h3 class="text-base sm:text-lg font-bold text-slate-900">Official Exam Records</h3>
-                                    <p class="text-xs text-slate-400">Authenticated examination credentials</p>
+                                <div class="min-w-0 flex-1">
+                                    <h3 class="text-sm sm:text-lg font-bold text-slate-900 truncate">Official Exam Records</h3>
+                                    <p class="text-[10px] sm:text-xs text-slate-400 truncate">Authenticated examination credentials</p>
                                 </div>
                             </div>
                             <?php 
@@ -698,55 +715,55 @@ require_once __DIR__ . '/common/header.php';
                                     ? 'bg-amber-50 text-amber-700 border-amber-200'
                                     : 'bg-slate-100 text-slate-600 border-slate-200');
                             ?>
-                            <span class="text-xs font-bold px-3 py-1 rounded-full border <?php echo $badgeColorClass; ?> flex items-center gap-1.5 shadow-xs">
+                            <span class="shrink-0 whitespace-nowrap text-[10px] sm:text-xs font-bold px-2.5 sm:px-3 py-1 rounded-full border <?php echo $badgeColorClass; ?> flex items-center gap-1.5 shadow-xs">
                                 <span class="w-1.5 h-1.5 rounded-full bg-current"></span>
-                                <?php echo htmlspecialchars($examTestType); ?>
+                                <span><?php echo htmlspecialchars($examTestType); ?></span>
                             </span>
                         </div>
 
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-4">
                             <!-- Examinee Number -->
-                            <div class="bg-slate-50/70 hover:bg-slate-50 rounded-2xl p-4 sm:p-5 border border-slate-200/70 transition-colors">
-                                <span class="block text-[11px] uppercase tracking-wider font-bold text-slate-400 mb-1.5 flex items-center gap-1.5">
+                            <div class="bg-slate-50/70 hover:bg-slate-50 rounded-xl sm:rounded-2xl p-3.5 sm:p-5 border border-slate-200/70 transition-colors">
+                                <span class="block text-[10px] sm:text-[11px] uppercase tracking-wider font-bold text-slate-400 mb-1 flex items-center gap-1.5">
                                     <svg class="w-3.5 h-3.5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2"></path></svg>
                                     Examinee Number
                                 </span>
-                                <span class="font-mono font-extrabold text-slate-900 text-base sm:text-lg tracking-wider select-all"><?php echo htmlspecialchars($result['examinee_number']); ?></span>
+                                <span class="font-mono font-extrabold text-slate-900 text-sm sm:text-lg tracking-wider select-all"><?php echo htmlspecialchars($result['examinee_number']); ?></span>
                             </div>
 
                             <!-- Exam Level -->
-                            <div class="bg-slate-50/70 hover:bg-slate-50 rounded-2xl p-4 sm:p-5 border border-slate-200/70 transition-colors">
-                                <span class="block text-[11px] uppercase tracking-wider font-bold text-slate-400 mb-1.5 flex items-center gap-1.5">
+                            <div class="bg-slate-50/70 hover:bg-slate-50 rounded-xl sm:rounded-2xl p-3.5 sm:p-5 border border-slate-200/70 transition-colors">
+                                <span class="block text-[10px] sm:text-[11px] uppercase tracking-wider font-bold text-slate-400 mb-1 flex items-center gap-1.5">
                                     <svg class="w-3.5 h-3.5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"></path></svg>
                                     Exam Level
                                 </span>
-                                <span class="font-extrabold text-slate-900 text-base sm:text-lg flex items-center gap-2">
+                                <span class="font-extrabold text-slate-900 text-sm sm:text-lg flex items-center gap-2">
                                     <span><?php echo htmlspecialchars($examLevelName); ?></span>
                                 </span>
                             </div>
 
                             <!-- Exam Month -->
-                            <div class="bg-slate-50/70 hover:bg-slate-50 rounded-2xl p-4 sm:p-5 border border-slate-200/70 transition-colors">
-                                <span class="block text-[11px] uppercase tracking-wider font-bold text-slate-400 mb-1.5 flex items-center gap-1.5">
+                            <div class="bg-slate-50/70 hover:bg-slate-50 rounded-xl sm:rounded-2xl p-3.5 sm:p-5 border border-slate-200/70 transition-colors">
+                                <span class="block text-[10px] sm:text-[11px] uppercase tracking-wider font-bold text-slate-400 mb-1 flex items-center gap-1.5">
                                     <svg class="w-3.5 h-3.5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                                     Exam Session
                                 </span>
-                                <span class="font-bold text-slate-900 text-base sm:text-lg">
+                                <span class="font-bold text-slate-900 text-sm sm:text-lg">
                                     <?php echo htmlspecialchars($examMonthName . ' ' . $examYearFull); ?>
                                 </span>
                             </div>
 
                             <!-- Exam Center -->
-                            <div class="bg-slate-50/70 hover:bg-slate-50 rounded-2xl p-4 sm:p-5 border border-slate-200/70 transition-colors">
-                                <span class="block text-[11px] uppercase tracking-wider font-bold text-slate-400 mb-1.5 flex items-center gap-1.5">
+                            <div class="bg-slate-50/70 hover:bg-slate-50 rounded-xl sm:rounded-2xl p-3.5 sm:p-5 border border-slate-200/70 transition-colors">
+                                <span class="block text-[10px] sm:text-[11px] uppercase tracking-wider font-bold text-slate-400 mb-1 flex items-center gap-1.5">
                                     <svg class="w-3.5 h-3.5 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
                                     Exam Center &amp; Site
                                 </span>
                                 <div class="flex items-center justify-between flex-wrap gap-2">
-                                    <span class="font-bold text-slate-900 text-base sm:text-lg">
+                                    <span class="font-bold text-slate-900 text-sm sm:text-lg truncate">
                                         <?php echo htmlspecialchars($examCenterName); ?>
                                     </span>
-                                    <span class="text-[11px] bg-slate-200/80 text-slate-700 px-2.5 py-0.5 rounded-full font-semibold border border-slate-300/60">
+                                    <span class="text-[10px] sm:text-[11px] bg-slate-200/80 text-slate-700 px-2 py-0.5 rounded-full font-semibold border border-slate-300/60 shrink-0">
                                         <?php echo htmlspecialchars($examCenterSite); ?>
                                     </span>
                                 </div>
@@ -755,36 +772,62 @@ require_once __DIR__ . '/common/header.php';
                     </div>
 
                     <!-- SUB-SECTION B: Personal Information (Protected with email verification) -->
-                    <div class="pt-6 border-t border-slate-100">
-                        <div class="flex items-center justify-between pb-4 mb-6 border-b border-slate-100 flex-wrap gap-3">
-                            <div class="flex items-center gap-3">
-                                <div class="w-10 h-10 rounded-2xl bg-amber-50 text-amber-600 border border-amber-200/80 flex items-center justify-center shrink-0">
-                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                    <div class="pt-5 sm:pt-6 border-t border-slate-100">
+                        <div class="flex items-center justify-between pb-3 sm:pb-4 mb-4 sm:mb-6 border-b border-slate-100 gap-2">
+                            <div class="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                                <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-amber-50 text-amber-600 border border-amber-200/80 flex items-center justify-center shrink-0">
+                                    <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
                                 </div>
-                                <div>
-                                    <h3 class="text-base sm:text-lg font-bold text-slate-900">Examinee Personal Details</h3>
-                                    <p class="text-xs text-slate-400">Identity protected by two-step email verification</p>
+                                <div class="min-w-0 flex-1">
+                                    <h3 class="text-sm sm:text-lg font-bold text-slate-900 truncate">Examinee Personal Details</h3>
+                                    <p class="text-[10px] sm:text-xs text-slate-400 truncate">Identity protected by two-step email verification</p>
                                 </div>
                             </div>
-                            <span id="badge-verification-status" class="text-xs font-semibold px-3 py-1 rounded-full border <?php echo $isVerified ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'; ?> flex items-center gap-1.5 shadow-xs">
+                            <span id="badge-verification-status" class="shrink-0 whitespace-nowrap text-[10px] sm:text-xs font-semibold px-2.5 sm:px-3 py-1 rounded-full border <?php echo $isVerified ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'; ?> flex items-center gap-1.5 shadow-xs">
                                 <?php echo $isVerified ? '✓ Email Verified' : '🔒 Protected'; ?>
                             </span>
                         </div>
 
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <!-- Full Name -->
-                            <div class="bg-slate-50/70 hover:bg-slate-50 rounded-2xl p-4 sm:p-5 border border-slate-200/70 transition-colors">
-                                <span class="block text-[11px] uppercase tracking-wider font-bold text-slate-400 mb-1.5">Candidate Full Name</span>
-                                <span id="field-name" class="<?php echo $isVerified ? 'font-extrabold text-slate-900 text-base sm:text-lg' : 'font-extrabold text-slate-900 text-base sm:text-lg blur-sens select-none'; ?>">
-                                    <?php echo $isVerified ? htmlspecialchars($result['name']) : '•••••••• ••••••••'; ?>
+                        <!-- ── Centered Candidate Profile: Photo & Full Name ── -->
+                        <div class="flex flex-col items-center text-center my-4 sm:my-6">
+                            <!-- Circular Photo Frame (Guaranteed standard size ~108px) -->
+                            <div class="relative w-24 h-24 sm:w-28 sm:h-28 shrink-0 aspect-square mx-auto rounded-full overflow-hidden shadow-md ring-4 ring-white border border-slate-200/70 bg-slate-100 flex items-center justify-center" style="width: 128px; height: 128px; max-width: 128px; max-height: 128px;">
+                                <img id="examinee-photo-img" 
+                                     src="<?php echo htmlspecialchars($examineePhotoUrl); ?>" 
+                                     alt="Examinee Photo"
+                                     class="w-full h-full object-cover rounded-full transition-all duration-700 ease-out <?php echo $isVerified ? 'blur-0 scale-100' : 'blur-md scale-110 opacity-75'; ?>"
+                                     style="width: 100%; height: 100%; object-fit: cover;">
+                                
+                                <!-- Lock Overlay (visible when unverified) -->
+                                <div id="examinee-photo-lock" class="absolute inset-0 bg-slate-950/40 backdrop-blur-[2px] rounded-full flex flex-col items-center justify-center text-white p-2 text-center <?php echo $isVerified ? 'hidden' : ''; ?> transition-opacity duration-300 pointer-events-none">
+                                    <div class="w-7 h-7 rounded-full bg-slate-900/80 border border-white/20 flex items-center justify-center text-amber-300 mb-0.5">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                                    </div>
+                                    <span class="text-[9px] font-bold tracking-wider uppercase text-slate-200">Locked</span>
+                                </div>
+                            </div>
+
+                            <!-- Candidate Full Name & Label -->
+                            <h4 id="field-name" class="mt-3 text-lg sm:text-2xl font-black text-slate-900 tracking-tight break-words px-2 <?php echo $isVerified ? '' : 'blur-sens select-none'; ?>">
+                                <?php echo $isVerified ? htmlspecialchars($result['name']) : '•••••••• ••••••••'; ?>
+                            </h4>
+                        </div>
+
+                        <!-- ── Bottom Grid: Date of Birth & Phone Number ── -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-4">
+                            <!-- Date of Birth (DOB) -->
+                            <div class="bg-slate-50/70 hover:bg-slate-50 rounded-xl sm:rounded-2xl p-3.5 sm:p-5 border border-slate-200/80 transition-colors">
+                                <span class="block text-[10px] sm:text-[11px] uppercase tracking-wider font-bold text-slate-400 mb-1.5">DATE OF BIRTH</span>
+                                <span id="field-dob" class="font-bold text-slate-900 text-sm sm:text-lg font-mono <?php echo $isVerified ? '' : 'blur-sens select-none'; ?>">
+                                    <?php echo $isVerified ? htmlspecialchars($formattedDob) : '•••• ••• ••••'; ?>
                                 </span>
                             </div>
 
-                            <!-- Date of Birth -->
-                            <div class="bg-slate-50/70 hover:bg-slate-50 rounded-2xl p-4 sm:p-5 border border-slate-200/70 transition-colors">
-                                <span class="block text-[11px] uppercase tracking-wider font-bold text-slate-400 mb-1.5">Date of Birth (DOB)</span>
-                                <span id="field-dob" class="<?php echo $isVerified ? 'font-bold text-slate-900 text-base sm:text-lg font-mono' : 'font-bold text-slate-900 text-base sm:text-lg font-mono blur-sens select-none'; ?>">
-                                    <?php echo $isVerified ? htmlspecialchars($result['dob'] ?? '') : '••••-••-••'; ?>
+                            <!-- Phone Number -->
+                            <div class="bg-slate-50/70 hover:bg-slate-50 rounded-xl sm:rounded-2xl p-3.5 sm:p-5 border border-slate-200/80 transition-colors">
+                                <span class="block text-[10px] sm:text-[11px] uppercase tracking-wider font-bold text-slate-400 mb-1.5">PHONE NUMBER</span>
+                                <span id="field-phone" class="font-bold text-slate-900 text-sm sm:text-lg font-mono <?php echo $isVerified ? '' : 'blur-sens select-none'; ?>">
+                                    <?php echo $isVerified ? htmlspecialchars(!empty($examineePhone) ? $examineePhone : '—') : '••••••••••••'; ?>
                                 </span>
                             </div>
                         </div>
@@ -1124,6 +1167,23 @@ require_once __DIR__ . '/common/header.php';
                     dobEl.classList.remove('blur-sens');
                 }
 
+                const phoneEl = document.getElementById('field-phone');
+                if (phoneEl) {
+                    phoneEl.textContent = res.data.phone || '—';
+                    phoneEl.classList.remove('blur-sens');
+                }
+
+                // Reveal & smoothly unblur examinee photo
+                const photoEl = document.getElementById('examinee-photo-img');
+                const photoLock = document.getElementById('examinee-photo-lock');
+
+                if (photoEl && res.data.photo_url) {
+                    photoEl.src = res.data.photo_url;
+                    photoEl.classList.remove('blur-md', 'scale-110', 'opacity-75');
+                    photoEl.classList.add('blur-0', 'scale-100', 'opacity-100');
+                    if (photoLock) photoLock.classList.add('hidden');
+                }
+
                 // Hide the CTA card inside details
                 const ctaCard = document.getElementById('verify-cta-card');
                 if (ctaCard) ctaCard.classList.add('hidden');
@@ -1132,7 +1192,7 @@ require_once __DIR__ . '/common/header.php';
                 const badgeEl = document.getElementById('badge-verification-status');
                 if (badgeEl) {
                     badgeEl.textContent = '✓ Email Verified';
-                    badgeEl.className = 'text-[11px] font-semibold px-2.5 py-1 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200';
+                    badgeEl.className = 'text-xs font-semibold px-3 py-1 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200 shadow-xs';
                 }
 
                 closeOtpModal();

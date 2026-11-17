@@ -834,4 +834,110 @@ function sendOtpEmail($toEmail, $otpCode, $examineeNumber) {
 
     return (bool)($sent ?? false);
 }
+
+/**
+ * ═══════════════════════════════════════════════════════════════════
+ * Examinee Photo Management (Google Drive Apps Script + Local Cache)
+ * ═══════════════════════════════════════════════════════════════════
+ */
+
+/**
+ * Get examinee photo URL or Base64 data.
+ * If not verified, returns a placeholder silhouette so real photo is never leaked.
+ * If verified, checks local cache, or queries Google Apps Script and caches the result.
+ */
+function getExamineePhotoUrl(string $examineeNumber, bool $isVerified = false): array {
+    $cleanRoll = preg_replace('/[^0-9]/', '', $examineeNumber);
+    $defaultAvatar = 'uploads/examinees/default-avatar.svg';
+
+    if (empty($cleanRoll)) {
+        return [
+            'url'        => $defaultAvatar,
+            'is_default' => true,
+            'verified'   => false
+        ];
+    }
+
+    // 1. If unverified, NEVER reveal real photo
+    if (!$isVerified) {
+        return [
+            'url'        => $defaultAvatar,
+            'is_default' => true,
+            'verified'   => false
+        ];
+    }
+
+    // 2. Verified: Check local storage / cache first
+    $uploadsDir = __DIR__ . '/uploads/examinees';
+    if (!is_dir($uploadsDir)) {
+        @mkdir($uploadsDir, 0755, true);
+    }
+
+    $extensions = ['jpg', 'jpeg', 'png', 'webp'];
+    foreach ($extensions as $ext) {
+        $localFile = $uploadsDir . '/' . $cleanRoll . '.' . $ext;
+        if (file_exists($localFile) && filesize($localFile) > 0) {
+            return [
+                'url'        => 'uploads/examinees/' . $cleanRoll . '.' . $ext . '?v=' . filemtime($localFile),
+                'is_default' => false,
+                'verified'   => true
+            ];
+        }
+    }
+
+    // 3. Not found locally: Check Google Apps Script Web App (if configured in .env)
+    $appscriptUrl = trim((string)($_ENV['DRIVE_APPSCRIPT_URL'] ?? ''));
+    $appscriptKey = trim((string)($_ENV['DRIVE_APPSCRIPT_KEY'] ?? ''));
+
+    if (!empty($appscriptUrl) && !empty($appscriptKey)) {
+        $endpoint = $appscriptUrl . (strpos($appscriptUrl, '?') !== false ? '&' : '?')
+                  . 'roll=' . urlencode($cleanRoll)
+                  . '&key=' . urlencode($appscriptKey);
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $endpoint);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 6);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($httpCode === 200 && !empty($response)) {
+            $json = json_decode($response, true);
+            if (!empty($json['found']) && !empty($json['dataUrl'])) {
+                // Cache the image locally so subsequent requests are instant
+                $dataUrl = $json['dataUrl'];
+                if (preg_match('/^data:image\/(\w+);base64,(.+)$/', $dataUrl, $matches)) {
+                    $ext = strtolower($matches[1]) === 'jpeg' ? 'jpg' : strtolower($matches[1]);
+                    $rawBytes = base64_decode($matches[2]);
+                    if ($rawBytes) {
+                        $savePath = $uploadsDir . '/' . $cleanRoll . '.' . $ext;
+                        @file_put_contents($savePath, $rawBytes);
+                        return [
+                            'url'        => 'uploads/examinees/' . $cleanRoll . '.' . $ext . '?v=' . time(),
+                            'is_default' => false,
+                            'verified'   => true
+                        ];
+                    }
+                }
+
+                // Fallback to direct dataUrl if save fails
+                return [
+                    'url'        => $dataUrl,
+                    'is_default' => false,
+                    'verified'   => true
+                ];
+            }
+        }
+    }
+
+    // 4. No photo found: Return default avatar marked as verified
+    return [
+        'url'        => $defaultAvatar,
+        'is_default' => true,
+        'verified'   => true
+    ];
+}
 ?>
