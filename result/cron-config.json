@@ -4,8 +4,8 @@
     "target_year": "26",
     "center_code": "474",
     "auto_disable_on_complete": true,
-    "last_run": "2026-11-17 22:50:50",
-    "last_status": "COMPLETED",
+    "last_run": "2026-11-18 07:11:44",
+    "last_status": "DISABLED",
     "updated_at": "2026-11-13 14:02:48",
-    "last_message": "Results published & database updated (0 Pass, 0 Fail). Cron auto-disabled."
+    "last_message": "Failed to reach nat-test.jp result page. Check network connection."
 }

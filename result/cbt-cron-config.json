@@ -8,8 +8,8 @@
     "mod_emails": "razbro905@gmail.com",
     "last_published_cutoff": "For tests held through November 9, 2026 (Mon)",
     "last_published_date": "09 November 2026",
-    "last_run": "2026-11-17 23:32:27",
-    "last_status": "COMPLETED",
-    "last_message": "Scraped cutoff For tests held through November 9, 2026 (Mon). Official site has 198 passed, but 0 CBT examinees found in database to update. Cron auto-disabled.",
+    "last_run": "2026-11-18 07:11:44",
+    "last_status": "DISABLED",
+    "last_message": "Failed to reach official CBT result page on nat-test.jp.",
     "updated_at": "2026-11-12 07:56:00"
 }

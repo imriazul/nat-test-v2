@@ -163,18 +163,18 @@ require_once __DIR__ . '/includes/sidebar.php';
                         </div>
 
                         <!-- Footer: Save & Crontab hint -->
-                        <div class="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2">
-                            <div class="text-xs text-slate-500 flex items-center gap-2 flex-wrap">
-                                <span class="font-bold text-slate-700">cPanel Master Cron Command (Runs Both PBT &amp; CBT):</span>
-                                <code class="bg-slate-100 text-slate-800 px-2 py-1 rounded text-[11px] font-mono border border-slate-200 select-all" id="cron-crontab-snippet">
+                        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-3 border-t border-slate-100">
+                            <div class="text-xs text-slate-500 flex items-center gap-2 flex-wrap min-w-0 flex-1">
+                                <span class="font-bold text-slate-700 whitespace-nowrap">cPanel Master Cron Command (Runs Both PBT &amp; CBT):</span>
+                                <code class="bg-slate-100 text-slate-800 px-2 py-1 rounded text-[11px] font-mono border border-slate-200 select-all break-all" id="cron-crontab-snippet">
                                     /usr/local/bin/php <?php echo dirname(__DIR__); ?>/result/cron-master.php >/dev/null 2>&1
                                 </code>
                             </div>
-                            <div class="flex items-center gap-3">
-                                <span id="cron-save-feedback" class="text-xs font-semibold text-emerald-600 opacity-0 transition-opacity duration-300">✓ Settings saved successfully!</span>
-                                <button type="submit" id="btn-save-cron" class="bg-slate-900 hover:bg-slate-800 text-white font-medium px-5 py-2.5 rounded-xl text-sm transition shadow-sm flex items-center gap-2 cursor-pointer">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                                    <span>Save Settings</span>
+                            <div class="flex items-center justify-end gap-3 shrink-0 w-full md:w-auto">
+                                <span id="cron-save-feedback" class="text-xs font-semibold text-emerald-600 opacity-0 transition-opacity duration-300 whitespace-nowrap">✓ Settings saved!</span>
+                                <button type="submit" id="btn-save-cron" class="bg-slate-900 hover:bg-slate-800 text-white font-medium px-5 py-2.5 rounded-xl text-sm transition shadow-sm flex items-center justify-center gap-2 cursor-pointer shrink-0 whitespace-nowrap">
+                                    <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                    <span class="whitespace-nowrap">Save Settings</span>
                                 </button>
                             </div>
                         </div>
@@ -272,18 +272,18 @@ require_once __DIR__ . '/includes/sidebar.php';
                         </div>
 
                         <!-- Footer: Save & Crontab hint -->
-                        <div class="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2">
-                            <div class="text-xs text-slate-500 flex items-center gap-2 flex-wrap">
-                                <span class="font-bold text-slate-700">cPanel Master Cron Command (Runs Both PBT &amp; CBT):</span>
-                                <code class="bg-slate-100 text-slate-800 px-2 py-1 rounded text-[11px] font-mono border border-slate-200 select-all" id="cbt-cron-crontab-snippet">
+                        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-3 border-t border-slate-100">
+                            <div class="text-xs text-slate-500 flex items-center gap-2 flex-wrap min-w-0 flex-1">
+                                <span class="font-bold text-slate-700 whitespace-nowrap">cPanel Master Cron Command (Runs Both PBT &amp; CBT):</span>
+                                <code class="bg-slate-100 text-slate-800 px-2 py-1 rounded text-[11px] font-mono border border-slate-200 select-all break-all" id="cbt-cron-crontab-snippet">
                                     /usr/local/bin/php <?php echo dirname(__DIR__); ?>/result/cron-master.php >/dev/null 2>&1
                                 </code>
                             </div>
-                            <div class="flex items-center gap-3">
-                                <span id="cbt-cron-save-feedback" class="text-xs font-semibold text-purple-600 opacity-0 transition-opacity duration-300">✓ Settings saved successfully!</span>
-                                <button type="submit" id="btn-save-cbt-cron" class="bg-slate-900 hover:bg-slate-800 text-white font-medium px-5 py-2.5 rounded-xl text-sm transition shadow-sm flex items-center gap-2 cursor-pointer">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                                    <span>Save Settings</span>
+                            <div class="flex items-center justify-end gap-3 shrink-0 w-full md:w-auto">
+                                <span id="cbt-cron-save-feedback" class="text-xs font-semibold text-purple-600 opacity-0 transition-opacity duration-300 whitespace-nowrap">✓ Settings saved!</span>
+                                <button type="submit" id="btn-save-cbt-cron" class="bg-slate-900 hover:bg-slate-800 text-white font-medium px-5 py-2.5 rounded-xl text-sm transition shadow-sm flex items-center justify-center gap-2 cursor-pointer shrink-0 whitespace-nowrap">
+                                    <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                    <span class="whitespace-nowrap">Save Settings</span>
                                 </button>
                             </div>
                         </div>
