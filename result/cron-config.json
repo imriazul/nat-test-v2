@@ -4,8 +4,8 @@
     "target_year": "26",
     "center_code": "474",
     "auto_disable_on_complete": true,
-    "last_run": "2026-11-13 20:03:13",
+    "last_run": "2026-11-17 22:50:50",
     "last_status": "COMPLETED",
     "updated_at": "2026-11-13 14:02:48",
-    "last_message": "Results published & database updated (1447 Pass, 1939 Fail). Cron auto-disabled."
+    "last_message": "Results published & database updated (0 Pass, 0 Fail). Cron auto-disabled."
 }

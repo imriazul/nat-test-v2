@@ -87,7 +87,7 @@ require_once __DIR__ . '/includes/sidebar.php';
 
                 <div class="p-6">
                     <form id="cron-config-form" onsubmit="saveCronConfig(event)" class="space-y-6">
-                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                             <!-- Scraping Exam Month -->
                             <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
                                 <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
@@ -134,20 +134,6 @@ require_once __DIR__ . '/includes/sidebar.php';
                                 </select>
                                 <p class="text-[11px] text-slate-400 mt-1.5">Dhaka (474), Khulna (476)</p>
                             </div>
-
-                            <!-- Auto-Stop Option -->
-                            <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col justify-between">
-                                <div>
-                                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                                        Auto-Stop Execution
-                                    </label>
-                                    <label class="flex items-start gap-2 cursor-pointer mt-1">
-                                        <input type="checkbox" id="cron-auto-disable" name="auto_disable_on_complete" value="1" checked class="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500">
-                                        <span class="text-xs text-slate-600 font-medium">Auto-disable cron after all levels (N5–N1) are updated</span>
-                                    </label>
-                                </div>
-                                <p class="text-[11px] text-emerald-600 font-medium mt-1">✓ Automatically halts on completion</p>
-                            </div>
                         </div>
 
                         <!-- Live Cron Status Banner -->
@@ -179,9 +165,9 @@ require_once __DIR__ . '/includes/sidebar.php';
                         <!-- Footer: Save & Crontab hint -->
                         <div class="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2">
                             <div class="text-xs text-slate-500 flex items-center gap-2 flex-wrap">
-                                <span class="font-bold text-slate-700">cPanel Cron Command:</span>
+                                <span class="font-bold text-slate-700">cPanel Master Cron Command (Runs Both PBT &amp; CBT):</span>
                                 <code class="bg-slate-100 text-slate-800 px-2 py-1 rounded text-[11px] font-mono border border-slate-200 select-all" id="cron-crontab-snippet">
-                                    /usr/local/bin/php <?php echo dirname(__DIR__); ?>/result/cron-job.php >/dev/null 2>&1
+                                    /usr/local/bin/php <?php echo dirname(__DIR__); ?>/result/cron-master.php >/dev/null 2>&1
                                 </code>
                             </div>
                             <div class="flex items-center gap-3">
@@ -254,7 +240,7 @@ require_once __DIR__ . '/includes/sidebar.php';
                                 </div>
                                 <input type="text" id="cbt-cron-known-old-data" name="known_old_data" class="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-xs text-slate-900 font-mono font-bold focus:ring-2 focus:ring-purple-500 outline-none transition" placeholder="For tests held through November 2, 2026 (Mon)">
                                 <p class="text-[11px] text-slate-500 mt-1.5">
-                                    If website data matches this text, result is treated as <strong>not updated</strong> yet. When website changes to a new date, new results will be published/updated.
+                                    When website changes to a new date, new results will be published/updated.
                                 </p>
                             </div>
                         </div>
@@ -288,9 +274,9 @@ require_once __DIR__ . '/includes/sidebar.php';
                         <!-- Footer: Save & Crontab hint -->
                         <div class="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2">
                             <div class="text-xs text-slate-500 flex items-center gap-2 flex-wrap">
-                                <span class="font-bold text-slate-700">cPanel CBT Cron Command:</span>
+                                <span class="font-bold text-slate-700">cPanel Master Cron Command (Runs Both PBT &amp; CBT):</span>
                                 <code class="bg-slate-100 text-slate-800 px-2 py-1 rounded text-[11px] font-mono border border-slate-200 select-all" id="cbt-cron-crontab-snippet">
-                                    /usr/local/bin/php <?php echo dirname(__DIR__); ?>/result/cbt-cron-job.php >/dev/null 2>&1
+                                    /usr/local/bin/php <?php echo dirname(__DIR__); ?>/result/cron-master.php >/dev/null 2>&1
                                 </code>
                             </div>
                             <div class="flex items-center gap-3">
@@ -338,12 +324,10 @@ async function loadCronConfig() {
         const mSelect = document.getElementById('cron-target-month');
         const yInput  = document.getElementById('cron-target-year');
         const cSelect = document.getElementById('cron-center-code');
-        const autoChk = document.getElementById('cron-auto-disable');
 
         if (mSelect && currentCronConfig.target_month) mSelect.value = currentCronConfig.target_month;
         if (yInput && currentCronConfig.target_year)   yInput.value = currentCronConfig.target_year;
         if (cSelect && currentCronConfig.center_code) cSelect.value = currentCronConfig.center_code;
-        if (autoChk) autoChk.checked = (currentCronConfig.auto_disable_on_complete !== false);
 
         updateCronUI(currentCronConfig, statuses);
     } catch (e) {
@@ -433,7 +417,7 @@ function updateCronUI(cfg, statuses = {}) {
             badgeStatus.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span> WAITING FOR PUBLICATION';
         }
         if (statusTitle) statusTitle.textContent = `Active: Monitoring ${monthName} 20${y2} Results`;
-        if (statusDesc) statusDesc.textContent = `Results have not yet been posted on nat-test.jp. The cron job is running on schedule and will immediately update the database as soon as results appear.`;
+        if (statusDesc) statusDesc.textContent = `Results have not posted yet.`;
         if (resetBtn) resetBtn.classList.add('hidden');
         if (statusBanner) statusBanner.className = 'p-4 rounded-xl border flex flex-col md:flex-row md:items-center justify-between gap-3 bg-amber-50 border-amber-200 text-amber-900';
         if (statusIcon) statusIcon.className = 'w-8 h-8 rounded-lg bg-amber-200 text-amber-800 flex items-center justify-center shrink-0 mt-0.5';

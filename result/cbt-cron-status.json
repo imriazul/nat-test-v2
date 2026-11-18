@@ -1,38 +1,29 @@
 {
     "status": "COMPLETED",
-    "last_check": "2026-11-12 09:45:02",
+    "last_check": "2026-11-17 23:27:05",
     "last_cutoff": "For tests held through November 9, 2026 (Mon)",
     "total_passed": 198,
-    "total_updated": 466,
+    "total_updated": 0,
     "history": [
         {
-            "timestamp": "2026-11-12 09:45:02",
+            "timestamp": "2026-11-17 23:27:05",
             "cutoff": "For tests held through November 9, 2026 (Mon)",
             "total_passed": 198,
             "passed_dhaka": 185,
             "passed_khulna": 13,
-            "updated_pass": 185,
-            "updated_fail": 281
+            "updated_pass": 0,
+            "updated_fail": 0
         },
         {
-            "timestamp": "2026-11-12 09:39:50",
+            "timestamp": "2026-11-17 22:51:06",
             "cutoff": "For tests held through November 9, 2026 (Mon)",
-            "total_passed": 198,
+            "total_passed": 185,
             "passed_dhaka": 185,
-            "passed_khulna": 13,
-            "updated_pass": 185,
-            "updated_fail": 281
-        },
-        {
-            "timestamp": "2026-11-12 09:26:37",
-            "cutoff": "For tests held through November 9, 2026 (Mon)",
-            "total_passed": 198,
-            "passed_dhaka": 185,
-            "passed_khulna": 13,
-            "updated_pass": 23,
-            "updated_fail": 46
+            "passed_khulna": 0,
+            "updated_pass": 0,
+            "updated_fail": 0
         }
     ],
-    "total_passed_updated": 185,
-    "total_failed_updated": 281
+    "total_passed_updated": 0,
+    "total_failed_updated": 0
 }

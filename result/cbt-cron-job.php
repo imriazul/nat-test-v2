@@ -441,11 +441,32 @@ function executeCbtResultScraper($options = [], $passedPdo = null) {
 
     if ($isMatch && !$isForce) {
         $log("  ➜ Comparison: Website data MATCHES KNOWN_OLD_DATA.");
+
+        // If results for this cutoff were already completed and synced, halt execution
+        if (($cbtStatus['status'] ?? '') === 'COMPLETED' || ($cronConfig['last_status'] ?? '') === 'COMPLETED') {
+            $msg = "[CRON HALTED] CBT results for cutoff ({$cutoffText}) were already processed & synced. Cron halted.";
+            $log($msg);
+
+            $cronConfig['enabled']      = false; // Ensure cron remains auto-disabled
+            $cronConfig['last_run']     = date('Y-m-d H:i:s');
+            $cronConfig['last_status']  = 'COMPLETED';
+            @file_put_contents($configFile, json_encode($cronConfig, JSON_PRETTY_PRINT));
+
+            return [
+                'success' => true,
+                'status'  => 'STOPPED_COMPLETED',
+                'logs'    => $logs,
+                'output'  => implode("\n", $logs),
+                'config'  => $cronConfig,
+                'metrics' => $cbtStatus
+            ];
+        }
+
         $log("⏸ [WAITING] Results on nat-test.jp are NOT updated yet. Standing by for next weekly publication.");
 
         $cronConfig['last_run']     = date('Y-m-d H:i:s');
         $cronConfig['last_status']  = 'WAITING';
-        $cronConfig['last_message'] = "Checked. Website cutoff matches KNOWN_OLD_DATA ({$cutoffText}). Not updated yet.";
+        $cronConfig['last_message'] = "Checked result ({$cutoffText}). Not Updated yet.";
         @file_put_contents($configFile, json_encode($cronConfig, JSON_PRETTY_PRINT));
 
         $cbtStatus['status']     = 'WAITING';
@@ -729,15 +750,17 @@ function executeCbtResultScraper($options = [], $passedPdo = null) {
         $log("  ✓ KNOWN_OLD_DATA updated to: '{$cutoffText}'.");
     }
 
+    // Auto-disable CBT cron after results are processed and database updated
+    $cronConfig['enabled']      = false;
     $cronConfig['last_run']     = date('Y-m-d H:i:s');
     $cronConfig['last_status']  = 'COMPLETED';
 
     if ($totalDbExaminees === 0) {
-        $cronConfig['last_message'] = "Scraped cutoff {$cutoffText}. Official site has {$totalPassed} passed, but 0 CBT examinees found in database to update.";
+        $cronConfig['last_message'] = "Scraped cutoff {$cutoffText}. Official site has {$totalPassed} passed, but 0 CBT examinees found in database to update. Cron auto-disabled.";
     } elseif ($totalPassedUpdated === 0 && $totalFailedUpdated === 0) {
-        $cronConfig['last_message'] = "Scraped cutoff {$cutoffText}. {$totalPassed} passed on website, but 0 matched existing {$totalDbExaminees} database records.";
+        $cronConfig['last_message'] = "Scraped cutoff {$cutoffText}. {$totalPassed} passed on website, but 0 matched existing {$totalDbExaminees} database records. Cron auto-disabled.";
     } else {
-        $cronConfig['last_message'] = "Processed cutoff {$cutoffText}. Updated: {$totalPassedUpdated} Pass, {$totalFailedUpdated} Fail.";
+        $cronConfig['last_message'] = "Processed cutoff {$cutoffText} ({$totalPassedUpdated} Pass, {$totalFailedUpdated} Fail). Database updated & cron auto-disabled.";
     }
 
     @file_put_contents($configFile, json_encode($cronConfig, JSON_PRETTY_PRINT));

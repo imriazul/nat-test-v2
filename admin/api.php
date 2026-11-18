@@ -317,12 +317,10 @@ if ($action === 'save_cron_config' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $center = trim($_POST['center_code'] ?? '474');
     if (!in_array($center, ['474', '476', 'all'])) $center = '474';
 
-    $autoDisable = isset($_POST['auto_disable_on_complete']) ? (bool)$_POST['auto_disable_on_complete'] : true;
-
     $config['target_month'] = $month;
     $config['target_year'] = $year;
     $config['center_code'] = $center;
-    $config['auto_disable_on_complete'] = $autoDisable;
+    $config['auto_disable_on_complete'] = true;
     $config['updated_at'] = date('Y-m-d H:i:s');
 
     $res = saveAdminCronConfigFile($config);
