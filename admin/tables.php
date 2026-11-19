@@ -219,27 +219,43 @@ require_once __DIR__ . '/includes/sidebar.php';
 
             <!-- Examinee Search & Filter Toolbar -->
             <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
-                <!-- Status Filter Pills -->
-                <div class="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200 text-xs shrink-0 flex-wrap gap-1">
-                    <button type="button" id="tab-status-all" onclick="setExamineeStatusFilter('all')" class="px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 bg-white text-slate-900 shadow-sm cursor-pointer">
-                        <span>All</span>
-                        <span id="badge-status-count-all" class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-100 text-slate-700 font-bold">0</span>
-                    </button>
-                    <button type="button" id="tab-status-pass" onclick="setExamineeStatusFilter('Pass')" class="px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5 text-slate-600 hover:text-emerald-700 cursor-pointer">
-                        <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-                        <span>Pass</span>
-                        <span id="badge-status-count-pass" class="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-100 text-emerald-800 font-bold">0</span>
-                    </button>
-                    <button type="button" id="tab-status-fail" onclick="setExamineeStatusFilter('Fail')" class="px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5 text-slate-600 hover:text-rose-700 cursor-pointer">
-                        <span class="w-2 h-2 rounded-full bg-rose-500"></span>
-                        <span>Fail</span>
-                        <span id="badge-status-count-fail" class="px-1.5 py-0.2 rounded-full text-[10px] bg-rose-100 text-rose-800 font-bold">0</span>
-                    </button>
-                    <button type="button" id="tab-status-pending" onclick="setExamineeStatusFilter('Pending')" class="px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5 text-slate-600 hover:text-amber-700 cursor-pointer">
-                        <span class="w-2 h-2 rounded-full bg-amber-500"></span>
-                        <span>Pending</span>
-                        <span id="badge-status-count-pending" class="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-100 text-amber-800 font-bold">0</span>
-                    </button>
+                <!-- Status Filter Pills & Level Filter Dropdown -->
+                <div class="flex items-center flex-wrap gap-2.5">
+                    <!-- Status Filter Pills -->
+                    <div class="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200 text-xs shrink-0 flex-wrap gap-1">
+                        <button type="button" id="tab-status-all" onclick="setExamineeStatusFilter('all')" class="px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 bg-white text-slate-900 shadow-sm cursor-pointer">
+                            <span>All</span>
+                            <span id="badge-status-count-all" class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-100 text-slate-700 font-bold">0</span>
+                        </button>
+                        <button type="button" id="tab-status-pass" onclick="setExamineeStatusFilter('Pass')" class="px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5 text-slate-600 hover:text-emerald-700 cursor-pointer">
+                            <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                            <span>Pass</span>
+                            <span id="badge-status-count-pass" class="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-100 text-emerald-800 font-bold">0</span>
+                        </button>
+                        <button type="button" id="tab-status-fail" onclick="setExamineeStatusFilter('Fail')" class="px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5 text-slate-600 hover:text-rose-700 cursor-pointer">
+                            <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+                            <span>Fail</span>
+                            <span id="badge-status-count-fail" class="px-1.5 py-0.2 rounded-full text-[10px] bg-rose-100 text-rose-800 font-bold">0</span>
+                        </button>
+                        <button type="button" id="tab-status-pending" onclick="setExamineeStatusFilter('Pending')" class="px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5 text-slate-600 hover:text-amber-700 cursor-pointer">
+                            <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+                            <span>Pending</span>
+                            <span id="badge-status-count-pending" class="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-100 text-amber-800 font-bold">0</span>
+                        </button>
+                    </div>
+
+                    <!-- Exam Level Dropdown Filter -->
+                    <div class="relative shrink-0">
+                        <select id="examinee-level-filter" onchange="changeExamineeLevelFilter()" class="appearance-none bg-slate-100 hover:bg-slate-200/80 border border-slate-200 text-slate-800 font-bold text-xs rounded-xl pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer transition shadow-2xs">
+                            <option value="all">All Levels</option>
+                            <option value="5">N5</option>
+                            <option value="4">N4</option>
+                            <option value="3">N3</option>
+                            <option value="2">N2</option>
+                            <option value="1">N1</option>
+                        </select>
+                        <svg class="w-3.5 h-3.5 text-slate-500 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </div>
                 </div>
 
                 <!-- Search Input & Per Page -->
@@ -267,6 +283,7 @@ require_once __DIR__ . '/includes/sidebar.php';
                             <tr>
                                 <th class="py-3.5 px-4 w-12 text-slate-400 text-center">#</th>
                                 <th class="py-3.5 px-4">Examinee Number</th>
+                                <th class="py-3.5 px-3 text-center">Level</th>
                                 <th class="py-3.5 px-4">Candidate Name</th>
                                 <th class="py-3.5 px-4">Email Address</th>
                                 <th class="py-3.5 px-4">Phone</th>
@@ -277,7 +294,7 @@ require_once __DIR__ . '/includes/sidebar.php';
                         </thead>
                         <tbody id="examinees-tbody" class="divide-y divide-slate-100">
                             <tr>
-                                <td colspan="8" class="py-12 text-center text-slate-400">
+                                <td colspan="9" class="py-12 text-center text-slate-400">
                                     <div class="inline-block animate-spin rounded-full h-6 w-6 border-2 border-slate-200 border-t-blue-600 mb-2"></div>
                                     <p>Loading examinee records…</p>
                                 </td>
@@ -406,6 +423,7 @@ let activeDetailTable = '';
 let currentExamineesList = [];
 let currentExamineeSearch = '';
 let currentExamineeStatus = 'all';
+let currentExamineeLevel = 'all';
 let currentPage = 1;
 let currentLimit = 100;
 let totalExamineePages = 1;
@@ -645,6 +663,7 @@ function openTableExaminees(tableName) {
     currentPage = 1;
     currentExamineeSearch = '';
     currentExamineeStatus = 'all';
+    currentExamineeLevel = 'all';
 
     // Update URL parameter without page reload
     if (window.history.pushState) {
@@ -668,9 +687,11 @@ function openTableExaminees(tableName) {
     // Set "Add Candidates" link
     document.getElementById('btn-import-more').href = 'import?table=' + encodeURIComponent(tableName);
 
-    // Reset search input & status filter tabs
+    // Reset search input, status filter tabs & level filter dropdown
     document.getElementById('examinee-search-input').value = '';
     document.getElementById('btn-clear-examinee-search').classList.add('hidden');
+    const lvlFilter = document.getElementById('examinee-level-filter');
+    if (lvlFilter) lvlFilter.value = 'all';
     updateExamineeStatusTabs();
 
     // Scroll to top
@@ -702,7 +723,7 @@ async function loadTableExaminees(page = 1) {
     const tbody = document.getElementById('examinees-tbody');
     tbody.innerHTML = `
         <tr>
-            <td colspan="8" class="py-12 text-center text-slate-400">
+            <td colspan="9" class="py-12 text-center text-slate-400">
                 <div class="inline-block animate-spin rounded-full h-6 w-6 border-2 border-slate-200 border-t-blue-600 mb-2"></div>
                 <p>Loading candidate records…</p>
             </td>
@@ -714,6 +735,7 @@ async function loadTableExaminees(page = 1) {
             table_name: activeDetailTable,
             search: currentExamineeSearch,
             status: currentExamineeStatus,
+            level: currentExamineeLevel,
             page: currentPage,
             limit: currentLimit
         });
@@ -722,7 +744,7 @@ async function loadTableExaminees(page = 1) {
         const data = await resp.json();
 
         if (!data.success) {
-            tbody.innerHTML = `<tr><td colspan="8" class="py-10 text-center text-rose-500 font-semibold">${escapeHtml(data.error || 'Failed to load records')}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="9" class="py-10 text-center text-rose-500 font-semibold">${escapeHtml(data.error || 'Failed to load records')}</td></tr>`;
             return;
         }
 
@@ -769,7 +791,7 @@ async function loadTableExaminees(page = 1) {
         renderExamineesTable();
     } catch (e) {
         console.error(e);
-        tbody.innerHTML = `<tr><td colspan="8" class="py-10 text-center text-rose-500 font-semibold">Network error while fetching candidate records.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="9" class="py-10 text-center text-rose-500 font-semibold">Network error while fetching candidate records.</td></tr>`;
     }
 }
 
@@ -781,12 +803,16 @@ function renderExamineesTable() {
         let msg = 'No examinees found in this batch.';
         if (currentExamineeSearch) {
             msg = `No examinees matching "${escapeHtml(currentExamineeSearch)}".`;
+        } else if (currentExamineeStatus !== 'all' && currentExamineeLevel !== 'all') {
+            msg = `No examinees found with status "${escapeHtml(currentExamineeStatus)}" in level N${escapeHtml(currentExamineeLevel)}.`;
         } else if (currentExamineeStatus !== 'all') {
             msg = `No examinees with status "${escapeHtml(currentExamineeStatus)}".`;
+        } else if (currentExamineeLevel !== 'all') {
+            msg = `No examinees found in level N${escapeHtml(currentExamineeLevel)}.`;
         }
         tbody.innerHTML = `
             <tr>
-                <td colspan="8" class="py-12 text-center text-slate-400">
+                <td colspan="9" class="py-12 text-center text-slate-400">
                     <svg class="w-10 h-10 text-slate-300 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
                     <p class="font-medium">${escapeHtml(msg)}</p>
                 </td>
@@ -808,6 +834,22 @@ function renderExamineesTable() {
             statusBadge = '<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200"><span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>Pending</span>';
         }
 
+        // Determine Level badge
+        const cleanNum = String(row.examinee_number || '').replace(/[^0-9]/g, '');
+        const lvlDigit = cleanNum.length >= 10 ? cleanNum.charAt(9) : '';
+        let levelBadge = '<span class="text-slate-300 font-mono text-[11px]">—</span>';
+        if (['1', '2', '3', '4', '5'].includes(lvlDigit)) {
+            const levelColors = {
+                '5': 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                '4': 'bg-blue-50 text-blue-700 border-blue-200',
+                '3': 'bg-purple-50 text-purple-700 border-purple-200',
+                '2': 'bg-amber-50 text-amber-700 border-amber-200',
+                '1': 'bg-rose-50 text-rose-700 border-rose-200'
+            };
+            const col = levelColors[lvlDigit] || 'bg-slate-100 text-slate-700 border-slate-200';
+            levelBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-extrabold border ${col}">N${lvlDigit}</span>`;
+        }
+
         const formattedDob = row.dob ? row.dob : '—';
         const rowJson = escapeHtml(JSON.stringify(row));
 
@@ -816,6 +858,9 @@ function renderExamineesTable() {
                 <td class="py-3 px-4 text-center text-slate-400 font-mono text-[11px]">${startIndex + idx + 1}</td>
                 <td class="py-3 px-4">
                     <span class="font-mono font-bold text-slate-900 text-xs">${escapeHtml(row.examinee_number)}</span>
+                </td>
+                <td class="py-3 px-3 text-center">
+                    ${levelBadge}
                 </td>
                 <td class="py-3 px-4">
                     <span class="font-bold text-slate-800 text-xs">${escapeHtml(row.name)}</span>
@@ -878,6 +923,12 @@ function clearExamineeSearch() {
 function setExamineeStatusFilter(status) {
     currentExamineeStatus = status;
     updateExamineeStatusTabs();
+    loadTableExaminees(1);
+}
+
+function changeExamineeLevelFilter() {
+    const el = document.getElementById('examinee-level-filter');
+    currentExamineeLevel = el ? el.value : 'all';
     loadTableExaminees(1);
 }
 
@@ -1082,7 +1133,10 @@ function downloadExamineesCsv(filter) {
     const label = filterLabels[filter] || 'All';
     showAdminToast(`Preparing ${label} examinees CSV export…`, 'info');
 
-    const downloadUrl = ADMIN_API_URL + '?action=export_table_csv&table_name=' + encodeURIComponent(activeDetailTable) + '&filter=' + encodeURIComponent(filter);
+    let downloadUrl = ADMIN_API_URL + '?action=export_table_csv&table_name=' + encodeURIComponent(activeDetailTable) + '&filter=' + encodeURIComponent(filter);
+    if (currentExamineeLevel && currentExamineeLevel !== 'all') {
+        downloadUrl += '&level=' + encodeURIComponent(currentExamineeLevel);
+    }
     window.location.href = downloadUrl;
 }
 

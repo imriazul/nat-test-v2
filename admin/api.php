@@ -279,6 +279,7 @@ if ($action === 'get_table_examinees') {
 
     $search = trim((string)($_GET['search'] ?? ''));
     $status = trim((string)($_GET['status'] ?? 'all'));
+    $level  = trim((string)($_GET['level'] ?? 'all'));
     $page   = max(1, (int)($_GET['page'] ?? 1));
     $limit  = min(500, max(10, (int)($_GET['limit'] ?? 100)));
     $offset = ($page - 1) * $limit;
@@ -290,6 +291,13 @@ if ($action === 'get_table_examinees') {
     if ($status !== '' && $status !== 'all') {
         $where[] = "status = ?";
         $params[] = $status;
+    }
+
+    $levelDigit = preg_replace('/[^0-9]/', '', $level);
+    $hasLevelFilter = in_array($levelDigit, ['1', '2', '3', '4', '5'], true);
+    if ($hasLevelFilter) {
+        $where[] = "LENGTH(TRIM(examinee_number)) >= 10 AND SUBSTRING(REPLACE(TRIM(examinee_number), '-', ''), 10, 1) = ?";
+        $params[] = $levelDigit;
     }
 
     if ($search !== '') {
@@ -309,12 +317,21 @@ if ($action === 'get_table_examinees') {
     $filteredCount = (int)$countStmt->fetchColumn();
 
     // Fetch batch statistics (total, pass, fail, pending)
-    $statsStmt = $pdo->query("SELECT 
+    // When a level is selected, stats reflect that level
+    $statsWhere = "";
+    $statsParams = [];
+    if ($hasLevelFilter) {
+        $statsWhere = "WHERE LENGTH(TRIM(examinee_number)) >= 10 AND SUBSTRING(REPLACE(TRIM(examinee_number), '-', ''), 10, 1) = ?";
+        $statsParams[] = $levelDigit;
+    }
+
+    $statsStmt = $pdo->prepare("SELECT 
         COUNT(*) as total,
         SUM(CASE WHEN LOWER(status) LIKE 'pass%' THEN 1 ELSE 0 END) as passed,
         SUM(CASE WHEN LOWER(status) LIKE 'fail%' THEN 1 ELSE 0 END) as failed,
         SUM(CASE WHEN LOWER(status) NOT LIKE 'pass%' AND LOWER(status) NOT LIKE 'fail%' THEN 1 ELSE 0 END) as pending
-        FROM `$tbl`");
+        FROM `$tbl` $statsWhere");
+    $statsStmt->execute($statsParams);
     $stats = $statsStmt->fetch(PDO::FETCH_ASSOC) ?: ['total' => 0, 'passed' => 0, 'failed' => 0, 'pending' => 0];
 
     // Fetch records
@@ -325,6 +342,14 @@ if ($action === 'get_table_examinees') {
     $queryStmt = $pdo->prepare($querySql);
     $queryStmt->execute($params);
     $examinees = $queryStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Attach parsed level to each examinee
+    foreach ($examinees as &$ex) {
+        $cleanNum = preg_replace('/[^0-9]/', '', $ex['examinee_number'] ?? '');
+        $lvlChar = strlen($cleanNum) >= 10 ? substr($cleanNum, 9, 1) : '';
+        $ex['level'] = in_array($lvlChar, ['1', '2', '3', '4', '5'], true) ? ('N' . $lvlChar) : null;
+    }
+    unset($ex);
 
     echo json_encode([
         'success'       => true,
@@ -477,18 +502,32 @@ if ($action === 'export_table_csv') {
     }
 
     $filter = strtolower(trim((string)($_GET['filter'] ?? 'all')));
-    $whereSql = "";
-    $label = "All";
+    $level  = trim((string)($_GET['level'] ?? 'all'));
+    $levelDigit = preg_replace('/[^0-9]/', '', $level);
+    $hasLevelFilter = in_array($levelDigit, ['1', '2', '3', '4', '5'], true);
+
+    $where = [];
+    $params = [];
+    $labelParts = [];
+
+    if ($hasLevelFilter) {
+        $where[] = "LENGTH(TRIM(examinee_number)) >= 10 AND SUBSTRING(REPLACE(TRIM(examinee_number), '-', ''), 10, 1) = ?";
+        $params[] = $levelDigit;
+        $labelParts[] = "N{$levelDigit}";
+    }
 
     if ($filter === 'pass') {
-        $whereSql = "WHERE LOWER(status) LIKE 'pass%'";
-        $label = "Pass";
+        $where[] = "LOWER(status) LIKE 'pass%'";
+        $labelParts[] = "Pass";
     } elseif ($filter === 'fail') {
-        $whereSql = "WHERE LOWER(status) LIKE 'fail%'";
-        $label = "Fail";
+        $where[] = "LOWER(status) LIKE 'fail%'";
+        $labelParts[] = "Fail";
     } else {
-        $label = "All";
+        $labelParts[] = "All";
     }
+
+    $whereSql = count($where) > 0 ? "WHERE " . implode(" AND ", $where) : "";
+    $label = implode('_', $labelParts);
 
     // Clean filename
     $filename = "{$tbl}_{$label}_Examinees_" . date('Ymd_His') . ".csv";
@@ -509,6 +548,7 @@ if ($action === 'export_table_csv') {
     fputcsv($output, [
         'SL',
         'Examinee Number',
+        'Level',
         'Candidate Name',
         'Email Address',
         'Phone Number',
@@ -517,7 +557,8 @@ if ($action === 'export_table_csv') {
         'Batch Table'
     ], ',', '"', '\\');
 
-    $stmt = $pdo->query("SELECT examinee_number, name, email, phone, dob, status FROM `$tbl` $whereSql ORDER BY id ASC");
+    $stmt = $pdo->prepare("SELECT examinee_number, name, email, phone, dob, status FROM `$tbl` $whereSql ORDER BY id ASC");
+    $stmt->execute($params);
 
     $sl = 1;
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -529,9 +570,15 @@ if ($action === 'export_table_csv') {
             $statusFormatted = 'Fail';
         }
 
+        // Parse level from examinee number
+        $cleanNum = preg_replace('/[^0-9]/', '', $row['examinee_number'] ?? '');
+        $lvlDigit = strlen($cleanNum) >= 10 ? substr($cleanNum, 9, 1) : '';
+        $lvlFormatted = in_array($lvlDigit, ['1', '2', '3', '4', '5'], true) ? ('N' . $lvlDigit) : '—';
+
         fputcsv($output, [
             $sl++,
             $row['examinee_number'] ?? '',
+            $lvlFormatted,
             $row['name'] ?? '',
             $row['email'] ?? '',
             $row['phone'] ?? '',
