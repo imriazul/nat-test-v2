@@ -522,7 +522,9 @@ function renderRecentTables(tables) {
 
         return `
             <tr class="hover:bg-slate-50/80 transition-colors">
-                <td class="py-3 px-4 font-mono font-bold text-slate-900">${escapeHtml(t.name)}</td>
+                <td class="py-3 px-4 font-mono font-bold text-slate-900">
+                    <a href="tables?table=${encodeURIComponent(t.name)}" class="hover:text-blue-600 hover:underline transition-colors">${escapeHtml(t.name)}</a>
+                </td>
                 <td class="py-3 px-4">${badge}</td>
                 <td class="py-3 px-4 text-right font-semibold text-slate-700">${(t.total || 0).toLocaleString()}</td>
                 <td class="py-3 px-4 text-right font-bold text-emerald-600">${passRate}</td>

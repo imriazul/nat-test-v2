@@ -263,6 +263,288 @@ if ($action === 'delete_table' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     exit;
 }
 
+if ($action === 'get_table_examinees') {
+    header('Content-Type: application/json');
+    $tbl = trim((string)($_GET['table_name'] ?? $_POST['table_name'] ?? ''));
+    if (!preg_match('/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)_\d{2}(_(CBT|PBT))?$/', $tbl)) {
+        echo json_encode(['error' => 'Invalid table name format']);
+        exit;
+    }
+
+    $chk = $pdo->query("SHOW TABLES LIKE '$tbl'");
+    if ($chk->rowCount() === 0) {
+        echo json_encode(['error' => "Table $tbl does not exist."]);
+        exit;
+    }
+
+    $search = trim((string)($_GET['search'] ?? ''));
+    $status = trim((string)($_GET['status'] ?? 'all'));
+    $page   = max(1, (int)($_GET['page'] ?? 1));
+    $limit  = min(500, max(10, (int)($_GET['limit'] ?? 100)));
+    $offset = ($page - 1) * $limit;
+
+    // Build query conditions
+    $where = [];
+    $params = [];
+
+    if ($status !== '' && $status !== 'all') {
+        $where[] = "status = ?";
+        $params[] = $status;
+    }
+
+    if ($search !== '') {
+        $where[] = "(examinee_number LIKE ? OR name LIKE ? OR email LIKE ? OR phone LIKE ?)";
+        $searchTerm = "%$search%";
+        $params[] = $searchTerm;
+        $params[] = $searchTerm;
+        $params[] = $searchTerm;
+        $params[] = $searchTerm;
+    }
+
+    $whereSql = count($where) > 0 ? "WHERE " . implode(" AND ", $where) : "";
+
+    // Count filtered records
+    $countStmt = $pdo->prepare("SELECT COUNT(*) FROM `$tbl` $whereSql");
+    $countStmt->execute($params);
+    $filteredCount = (int)$countStmt->fetchColumn();
+
+    // Fetch batch statistics (total, pass, fail, pending)
+    $statsStmt = $pdo->query("SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN LOWER(status) LIKE 'pass%' THEN 1 ELSE 0 END) as passed,
+        SUM(CASE WHEN LOWER(status) LIKE 'fail%' THEN 1 ELSE 0 END) as failed,
+        SUM(CASE WHEN LOWER(status) NOT LIKE 'pass%' AND LOWER(status) NOT LIKE 'fail%' THEN 1 ELSE 0 END) as pending
+        FROM `$tbl`");
+    $stats = $statsStmt->fetch(PDO::FETCH_ASSOC) ?: ['total' => 0, 'passed' => 0, 'failed' => 0, 'pending' => 0];
+
+    // Fetch records
+    $querySql = "SELECT id, examinee_number, name, dob, email, phone, status, created_at 
+                 FROM `$tbl` $whereSql 
+                 ORDER BY id ASC 
+                 LIMIT $limit OFFSET $offset";
+    $queryStmt = $pdo->prepare($querySql);
+    $queryStmt->execute($params);
+    $examinees = $queryStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    echo json_encode([
+        'success'       => true,
+        'table'         => $tbl,
+        'examinees'     => $examinees,
+        'filteredCount' => $filteredCount,
+        'total'         => (int)($stats['total'] ?? 0),
+        'passed'        => (int)($stats['passed'] ?? 0),
+        'failed'        => (int)($stats['failed'] ?? 0),
+        'pending'       => (int)($stats['pending'] ?? 0),
+        'page'          => $page,
+        'limit'         => $limit,
+        'totalPages'    => ceil($filteredCount / $limit)
+    ]);
+    exit;
+}
+
+if ($action === 'update_examinee' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (ob_get_length()) ob_clean();
+    header('Content-Type: application/json');
+
+    $tbl = trim((string)($_POST['table_name'] ?? ''));
+    if (!preg_match('/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)_\d{2}(_(CBT|PBT))?$/', $tbl)) {
+        echo json_encode(['error' => 'Invalid table name format']);
+        exit;
+    }
+
+    $id             = (int)($_POST['id'] ?? 0);
+    $examineeNumber = trim((string)($_POST['examinee_number'] ?? ''));
+    $name           = trim((string)($_POST['name'] ?? ''));
+    $email          = trim((string)($_POST['email'] ?? ''));
+    $phone          = trim((string)($_POST['phone'] ?? ''));
+    $dob            = trim((string)($_POST['dob'] ?? ''));
+    $statusRaw      = trim((string)($_POST['status'] ?? 'Pending'));
+
+    if ($id <= 0) {
+        echo json_encode(['error' => 'Invalid examinee ID.']);
+        exit;
+    }
+
+    if (empty($examineeNumber)) {
+        echo json_encode(['error' => 'Examinee number is required.']);
+        exit;
+    }
+
+    if (empty($name)) {
+        echo json_encode(['error' => 'Candidate name is required.']);
+        exit;
+    }
+
+    // Normalize status strictly to Pass, Fail, or Pending
+    $statusLower = strtolower($statusRaw);
+    if (strpos($statusLower, 'pass') === 0 || $statusLower === 'p') {
+        $status = 'Pass';
+    } elseif (strpos($statusLower, 'fail') === 0 || $statusLower === 'f') {
+        $status = 'Fail';
+    } else {
+        $status = 'Pending';
+    }
+
+    // Format DOB if provided
+    $formattedDob = null;
+    if (!empty($dob)) {
+        $time = strtotime($dob);
+        if ($time) {
+            $formattedDob = date('Y-m-d', $time);
+        }
+    }
+
+    // Check duplicate examinee_number in the same table
+    $dupStmt = $pdo->prepare("SELECT id FROM `$tbl` WHERE examinee_number = ? AND id != ? LIMIT 1");
+    $dupStmt->execute([$examineeNumber, $id]);
+    if ($dupStmt->fetch()) {
+        echo json_encode(['error' => "Examinee number \"$examineeNumber\" is already assigned to another candidate in this table."]);
+        exit;
+    }
+
+    try {
+        $updateStmt = $pdo->prepare("UPDATE `$tbl` SET 
+            examinee_number = ?, 
+            name = ?, 
+            email = ?, 
+            phone = ?, 
+            dob = ?, 
+            status = ? 
+            WHERE id = ?");
+        $updateStmt->execute([
+            $examineeNumber,
+            $name,
+            !empty($email) ? $email : null,
+            !empty($phone) ? $phone : null,
+            $formattedDob,
+            $status,
+            $id
+        ]);
+
+        // Fetch updated record
+        $getStmt = $pdo->prepare("SELECT id, examinee_number, name, dob, email, phone, status, created_at FROM `$tbl` WHERE id = ?");
+        $getStmt->execute([$id]);
+        $updatedRecord = $getStmt->fetch(PDO::FETCH_ASSOC);
+
+        echo json_encode([
+            'success' => true,
+            'message' => "Examinee #{$examineeNumber} updated successfully.",
+            'data'    => $updatedRecord
+        ]);
+    } catch (PDOException $e) {
+        echo json_encode(['error' => 'Failed to update examinee: ' . $e->getMessage()]);
+    }
+    exit;
+}
+
+if ($action === 'delete_examinee' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (ob_get_length()) ob_clean();
+    header('Content-Type: application/json');
+
+    $tbl = trim((string)($_POST['table_name'] ?? ''));
+    if (!preg_match('/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)_\d{2}(_(CBT|PBT))?$/', $tbl)) {
+        echo json_encode(['error' => 'Invalid table name format']);
+        exit;
+    }
+
+    $id = (int)($_POST['id'] ?? 0);
+    if ($id <= 0) {
+        echo json_encode(['error' => 'Invalid examinee ID.']);
+        exit;
+    }
+
+    try {
+        $delStmt = $pdo->prepare("DELETE FROM `$tbl` WHERE id = ?");
+        $delStmt->execute([$id]);
+        echo json_encode(['success' => true, 'message' => 'Examinee record deleted successfully.']);
+    } catch (PDOException $e) {
+        echo json_encode(['error' => 'Failed to delete examinee: ' . $e->getMessage()]);
+    }
+    exit;
+}
+
+if ($action === 'export_table_csv') {
+    $tbl = trim((string)($_GET['table_name'] ?? ''));
+    if (!preg_match('/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)_\d{2}(_(CBT|PBT))?$/', $tbl)) {
+        http_response_code(400);
+        die('Invalid table name format');
+    }
+
+    $chk = $pdo->query("SHOW TABLES LIKE '$tbl'");
+    if ($chk->rowCount() === 0) {
+        http_response_code(404);
+        die("Table $tbl does not exist.");
+    }
+
+    $filter = strtolower(trim((string)($_GET['filter'] ?? 'all')));
+    $whereSql = "";
+    $label = "All";
+
+    if ($filter === 'pass') {
+        $whereSql = "WHERE LOWER(status) LIKE 'pass%'";
+        $label = "Pass";
+    } elseif ($filter === 'fail') {
+        $whereSql = "WHERE LOWER(status) LIKE 'fail%'";
+        $label = "Fail";
+    } else {
+        $label = "All";
+    }
+
+    // Clean filename
+    $filename = "{$tbl}_{$label}_Examinees_" . date('Ymd_His') . ".csv";
+
+    // Set download headers
+    if (ob_get_length()) ob_clean();
+    header('Content-Type: text/csv; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Pragma: no-cache');
+    header('Expires: 0');
+
+    $output = fopen('php://output', 'w');
+
+    // Add UTF-8 BOM for Microsoft Excel / Google Sheets compatibility
+    fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
+
+    // CSV Column Headers
+    fputcsv($output, [
+        'SL',
+        'Examinee Number',
+        'Candidate Name',
+        'Email Address',
+        'Phone Number',
+        'Date of Birth',
+        'Result Status',
+        'Batch Table'
+    ], ',', '"', '\\');
+
+    $stmt = $pdo->query("SELECT examinee_number, name, email, phone, dob, status FROM `$tbl` $whereSql ORDER BY id ASC");
+
+    $sl = 1;
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $rawStatus = trim($row['status'] ?? 'Pending');
+        $statusFormatted = 'Pending';
+        if (stripos($rawStatus, 'pass') === 0) {
+            $statusFormatted = 'Pass';
+        } elseif (stripos($rawStatus, 'fail') === 0) {
+            $statusFormatted = 'Fail';
+        }
+
+        fputcsv($output, [
+            $sl++,
+            $row['examinee_number'] ?? '',
+            $row['name'] ?? '',
+            $row['email'] ?? '',
+            $row['phone'] ?? '',
+            $row['dob'] ?? '',
+            $statusFormatted,
+            $tbl
+        ], ',', '"', '\\');
+    }
+
+    fclose($output);
+    exit;
+}
+
 // ─── 3. PBT Scraper Cron Job Helpers & Handlers ───────────────
 function getAdminCronConfigFile() {
     return dirname(__DIR__) . '/result/cron-config.json';
