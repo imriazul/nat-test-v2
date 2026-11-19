@@ -116,6 +116,48 @@ require_once __DIR__ . '/includes/sidebar.php';
             </div>
         </div>
 
+        <?php $personalDetailsEnabled = isPersonalDetailsEnabled(); ?>
+        <!-- Portal Configuration: Personal Details Visibility -->
+        <div class="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-5 sm:p-6 transition-all">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-5">
+                <div class="flex items-start gap-4">
+                    <div class="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200/80 flex items-center justify-center text-amber-600 shrink-0 mt-0.5">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                    </div>
+                    <div class="space-y-1">
+                        <div class="flex items-center gap-2.5 flex-wrap">
+                            <h3 class="text-sm sm:text-base font-bold text-slate-900">Examinee Personal Details Section</h3>
+                            <span id="badge-personal-details-status" class="px-2.5 py-0.5 rounded-full text-xs font-semibold border flex items-center gap-1.5 shadow-2xs <?php echo $personalDetailsEnabled ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-600 border-slate-300'; ?>">
+                                <span class="w-1.5 h-1.5 rounded-full <?php echo $personalDetailsEnabled ? 'bg-emerald-500' : 'bg-slate-400'; ?>"></span>
+                                <span><?php echo $personalDetailsEnabled ? 'Visible (Email OTP Protected)' : 'Hidden (Exam Scores Only)'; ?></span>
+                            </span>
+                        </div>
+                        <p class="text-xs text-slate-500 max-w-3xl leading-relaxed">
+                            Control whether examinees can see and verify confidential personal details (Photo, Candidate Name, DOB, Phone) via email OTP on the public result page.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Toggle Switch Action -->
+                <div class="flex items-center justify-between sm:justify-end gap-3 pt-3 sm:pt-0 border-t sm:border-t-0 border-slate-100 shrink-0">
+                    <div class="text-right">
+                        <span id="label-personal-details-state" class="block text-xs font-bold <?php echo $personalDetailsEnabled ? 'text-emerald-700' : 'text-slate-500'; ?>">
+                            <?php echo $personalDetailsEnabled ? 'Display Active' : 'Display Hidden'; ?>
+                        </span>
+                        <span id="sublabel-personal-details-state" class="block text-[10px] text-slate-400">
+                            <?php echo $personalDetailsEnabled ? 'Section is visible' : 'Section is hidden'; ?>
+                        </span>
+                    </div>
+                    <button type="button" id="btn-toggle-personal-details" onclick="togglePersonalDetails()" 
+                        data-enabled="<?php echo $personalDetailsEnabled ? '1' : '0'; ?>"
+                        class="relative inline-flex h-7 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none <?php echo $personalDetailsEnabled ? 'bg-blue-600' : 'bg-slate-300'; ?>" 
+                        role="switch" aria-checked="<?php echo $personalDetailsEnabled ? 'true' : 'false'; ?>" title="Toggle Examinee Personal Details">
+                        <span id="knob-personal-details" class="pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out <?php echo $personalDetailsEnabled ? 'translate-x-5' : 'translate-x-0'; ?>"></span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <!-- Quick Action Launcher Hub -->
         <div>
             <h2 class="text-base font-bold text-slate-900 mb-3 flex items-center gap-2">
@@ -373,6 +415,89 @@ async function initDashboard() {
         }
     } catch (e) {
         console.error('Failed to load users:', e);
+    }
+
+    // 5. Fetch Portal Settings
+    await loadSystemSettings();
+}
+
+// ─── Portal Settings: Personal Details Section ─────────────
+async function loadSystemSettings() {
+    try {
+        const resp = await fetch(ADMIN_API_URL + '?action=get_system_settings');
+        const data = await resp.json();
+        if (data.success && data.settings) {
+            updatePersonalDetailsUI(!!data.settings.show_personal_details);
+        }
+    } catch (e) {
+        console.error('Failed to load system settings:', e);
+    }
+}
+
+function updatePersonalDetailsUI(isEnabled) {
+    const btn = document.getElementById('btn-toggle-personal-details');
+    const knob = document.getElementById('knob-personal-details');
+    const badge = document.getElementById('badge-personal-details-status');
+    const label = document.getElementById('label-personal-details-state');
+    const sublabel = document.getElementById('sublabel-personal-details-state');
+
+    if (!btn || !knob || !badge || !label || !sublabel) return;
+
+    btn.setAttribute('aria-checked', isEnabled ? 'true' : 'false');
+    btn.dataset.enabled = isEnabled ? '1' : '0';
+
+    if (isEnabled) {
+        btn.className = 'relative inline-flex h-7 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none bg-blue-600';
+        knob.className = 'pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out translate-x-5';
+        badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-semibold border bg-emerald-50 text-emerald-700 border-emerald-200 flex items-center gap-1.5 shadow-2xs';
+        badge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span><span>Visible (Email OTP Protected)</span>';
+        label.textContent = 'Display Active';
+        label.className = 'block text-xs font-bold text-emerald-700';
+        sublabel.textContent = 'Section is visible';
+    } else {
+        btn.className = 'relative inline-flex h-7 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none bg-slate-300';
+        knob.className = 'pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out translate-x-0';
+        badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-semibold border bg-slate-100 text-slate-600 border-slate-300 flex items-center gap-1.5 shadow-2xs';
+        badge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span><span>Hidden (Exam Scores Only)</span>';
+        label.textContent = 'Display Hidden';
+        label.className = 'block text-xs font-bold text-slate-500';
+        sublabel.textContent = 'Section is hidden';
+    }
+}
+
+async function togglePersonalDetails() {
+    const btn = document.getElementById('btn-toggle-personal-details');
+    if (!btn) return;
+
+    const currentlyEnabled = btn.dataset.enabled === '1';
+    const targetState = !currentlyEnabled;
+
+    btn.disabled = true;
+    btn.classList.add('opacity-70');
+
+    try {
+        const formData = new FormData();
+        formData.append('action', 'toggle_personal_details');
+        formData.append('enabled', targetState ? '1' : '0');
+
+        const resp = await fetch(ADMIN_API_URL, {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await resp.json();
+        if (data.success) {
+            updatePersonalDetailsUI(data.enabled);
+            showAdminToast(data.message, 'success');
+        } else {
+            showAdminToast(data.error || 'Failed to update setting.', 'error');
+        }
+    } catch (e) {
+        console.error(e);
+        showAdminToast('Network error while updating setting.', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.classList.remove('opacity-70');
     }
 }
 

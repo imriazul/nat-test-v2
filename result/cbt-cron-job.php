@@ -135,7 +135,7 @@ function sendCbtNotificationEmails($recipientsStr, $subject, $body) {
     $smtpUser   = $env['VERIFY_SMTP_USER'] ?? $env['SMTP_USER'] ?? '';
     $smtpPass   = $env['VERIFY_SMTP_PASS'] ?? $env['SMTP_PASS'] ?? '';
     $smtpFrom   = $env['VERIFY_SMTP_FROM_EMAIL'] ?? $env['SMTP_FROM_EMAIL'] ?? 'verify@nat-test.bd';
-    $fromName   = $env['VERIFY_SMTP_FROM_NAME'] ?? $env['SMTP_FROM_NAME'] ?? 'NAT-TEST BD CBT System';
+    $fromName   = $env['VERIFY_SMTP_FROM_NAME'] ?? $env['SMTP_FROM_NAME'] ?? 'NAT-TEST BD';
     $resendKey  = $env['RESEND_API_KEY'] ?? '';
 
     foreach ($recipients as $email) {

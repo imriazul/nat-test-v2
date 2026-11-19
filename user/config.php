@@ -373,7 +373,7 @@ function sendExamineeVerificationEmail(string $toEmail, string $otpCode): array 
     $user     = trim($_ENV['VERIFY_SMTP_USER'] ?? 'verify@nat-test.bd');
     $pass     = trim($_ENV['VERIFY_SMTP_PASS'] ?? '');
     $from     = trim($_ENV['VERIFY_SMTP_FROM_EMAIL'] ?? 'verify@nat-test.bd');
-    $fromName = trim($_ENV['VERIFY_SMTP_FROM_NAME'] ?? 'NAT-TEST BD Verification');
+    $fromName = trim($_ENV['VERIFY_SMTP_FROM_NAME'] ?? 'NAT-TEST BD');
     $replyTo  = trim($_ENV['VERIFY_SMTP_REPLY_TO'] ?? 'support@nat-test.bd');
 
     if (empty($host) || empty($user) || empty($pass)) {

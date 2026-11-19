@@ -70,6 +70,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     if (ob_get_length()) ob_clean();
     header('Content-Type: application/json');
 
+    if (!isPersonalDetailsEnabled()) {
+        echo json_encode(['error' => 'Personal details email verification is temporarily disabled by the administrator.']);
+        exit;
+    }
+
     $examineeNumber = trim($_POST['examinee_number'] ?? '');
     $inputEmail     = strtolower(trim($_POST['email'] ?? ''));
 
@@ -171,6 +176,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'verify_otp') {
     if (ob_get_length()) ob_clean();
     header('Content-Type: application/json');
+
+    if (!isPersonalDetailsEnabled()) {
+        echo json_encode(['error' => 'Personal details email verification is temporarily disabled by the administrator.']);
+        exit;
+    }
 
     $examineeNumber = trim($_POST['examinee_number'] ?? '');
     $userOtp        = trim($_POST['otp'] ?? '');
@@ -771,6 +781,7 @@ require_once __DIR__ . '/common/header.php';
                         </div>
                     </div>
 
+                    <?php if (isPersonalDetailsEnabled()): ?>
                     <!-- SUB-SECTION B: Personal Information (Protected with email verification) -->
                     <div class="pt-5 sm:pt-6 border-t border-slate-100">
                         <div class="flex items-center justify-between pb-3 sm:pb-4 mb-4 sm:mb-6 border-b border-slate-100 gap-2">
@@ -851,6 +862,7 @@ require_once __DIR__ . '/common/header.php';
                             </div>
                         <?php endif; ?>
                     </div>
+                    <?php endif; ?>
                 </div>
 
             <?php else: ?>
@@ -880,6 +892,7 @@ require_once __DIR__ . '/common/header.php';
 
     </main>
 
+    <?php if (isPersonalDetailsEnabled()): ?>
     <!-- ═══ Two-Step OTP Verification Modal ═══ -->
     <div id="otp-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-md hidden p-4 sm:p-6">
         <div class="bg-white w-full max-w-md rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-100 relative animate-float">
@@ -969,6 +982,7 @@ require_once __DIR__ . '/common/header.php';
 
         </div>
     </div>
+    <?php endif; ?>
 
     <!-- ═══ JavaScript Logic ═══ -->
     <script>

@@ -447,6 +447,73 @@ if (!function_exists('isDateExcluded')) {
     }
 }
 
+/**
+ * Load system settings from system_settings.json
+ */
+if (!function_exists('getSystemSettings')) {
+    function getSystemSettings(bool $forceReload = false): array {
+        static $cache = null;
+        if ($cache !== null && !$forceReload) {
+            return $cache;
+        }
+
+        $jsonPath = __DIR__ . '/system_settings.json';
+        $defaults = [
+            'show_personal_details' => true
+        ];
+
+        if (!file_exists($jsonPath)) {
+            $cache = $defaults;
+            return $cache;
+        }
+
+        $raw = @file_get_contents($jsonPath);
+        if ($raw === false) {
+            $cache = $defaults;
+            return $cache;
+        }
+
+        $data = json_decode($raw, true);
+        if (!is_array($data)) {
+            $cache = $defaults;
+            return $cache;
+        }
+
+        $cache = array_merge($defaults, $data);
+        return $cache;
+    }
+}
+
+/**
+ * Save system settings to system_settings.json
+ */
+if (!function_exists('saveSystemSettings')) {
+    function saveSystemSettings(array $data): bool {
+        $jsonPath = __DIR__ . '/system_settings.json';
+        $current = getSystemSettings();
+        $merged = array_merge($current, $data);
+        $formatted = json_encode($merged, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        if ($formatted === false) {
+            return false;
+        }
+        $saved = @file_put_contents($jsonPath, $formatted . "\n") !== false;
+        if ($saved) {
+            getSystemSettings(true); // refresh static cache
+        }
+        return $saved;
+    }
+}
+
+/**
+ * Helper to check if Examinee Personal Details should be displayed
+ */
+if (!function_exists('isPersonalDetailsEnabled')) {
+    function isPersonalDetailsEnabled(): bool {
+        $settings = getSystemSettings();
+        return !empty($settings['show_personal_details']);
+    }
+}
+
 // ─── Resend Email Client (Native cURL - Zero Dependencies) ─────────
 // Support Composer autoload if present in the future
 if (file_exists(__DIR__ . '/vendor/autoload.php')) {
@@ -612,8 +679,8 @@ function sendSmtpEmail($toEmail, $subject, $htmlBody, $textBody = '') {
     $secure   = strtolower($_ENV['SMTP_SECURE'] ?? 'ssl'); // 'ssl', 'tls', or ''
     $user     = $_ENV['SMTP_USER'] ?? '';
     $pass     = $_ENV['SMTP_PASS'] ?? '';
-    $from         = $_ENV['SMTP_FROM_EMAIL'] ?? 'noreply@nat-test.bd';
-    $fromName     = $_ENV['SMTP_FROM_NAME'] ?? 'NAT-TEST Management';
+    $from         = $_ENV['VERIFY_SMTP_FROM_EMAIL'] ?? $_ENV['SMTP_FROM_EMAIL'] ?? 'verify@nat-test.bd';
+    $fromName     = $_ENV['VERIFY_SMTP_FROM_NAME'] ?? $_ENV['SMTP_FROM_NAME'] ?? 'NAT-TEST BD';
     $envelopeFrom = $_ENV['SMTP_ENVELOPE_FROM'] ?? (!empty($user) && filter_var($user, FILTER_VALIDATE_EMAIL) ? $user : $from);
     $replyTo      = $_ENV['SMTP_REPLY_TO'] ?? 'support@nat-test.bd';
 
@@ -821,7 +888,7 @@ function sendOtpEmail($toEmail, $otpCode, $examineeNumber) {
     // 3. Fallback to PHP mail() only if SMTP/Resend aren't configured AND mail() function is available
     if (empty($_ENV['SMTP_HOST']) && empty($_ENV['RESEND_API_KEY'])) {
         if (function_exists('mail')) {
-            $headers = "From: " . ($_ENV['SMTP_FROM_EMAIL'] ?? 'noreply@nat-test.bd') . "\r\n" .
+            $headers = "From: =?UTF-8?B?" . base64_encode('NAT-TEST BD') . "?= <" . ($_ENV['VERIFY_SMTP_FROM_EMAIL'] ?? $_ENV['SMTP_FROM_EMAIL'] ?? 'noreply@nat-test.bd') . ">\r\n" .
                        "Reply-To: " . ($_ENV['SMTP_REPLY_TO'] ?? 'support@nat-test.bd') . "\r\n" .
                        "Content-Type: text/html; charset=UTF-8\r\n";
             $sent = @mail($toEmail, $subject, $htmlBody, $headers);

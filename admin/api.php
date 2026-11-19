@@ -92,6 +92,41 @@ if ($action === 'remove_excluded_day' && $_SERVER['REQUEST_METHOD'] === 'POST') 
     exit;
 }
 
+// ─── System Settings Management ──────────────────────────────
+if ($action === 'get_system_settings') {
+    header('Content-Type: application/json');
+    $settings = getSystemSettings();
+    echo json_encode(['success' => true, 'settings' => $settings]);
+    exit;
+}
+
+if ($action === 'toggle_personal_details' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    header('Content-Type: application/json');
+    $current = getSystemSettings();
+    $newVal = !empty($current['show_personal_details']) ? false : true;
+
+    if (isset($_POST['enabled'])) {
+        $val = $_POST['enabled'];
+        $newVal = ($val === '1' || $val === 'true' || $val === true || $val === 1);
+    }
+
+    $saved = saveSystemSettings(['show_personal_details' => $newVal]);
+    if (!$saved) {
+        echo json_encode(['error' => 'Failed to save settings. Please check file permissions on system_settings.json.']);
+        exit;
+    }
+
+    echo json_encode([
+        'success'  => true,
+        'enabled'  => $newVal,
+        'settings' => getSystemSettings(),
+        'message'  => $newVal 
+            ? 'Examinee Personal Details section is now VISIBLE on the result page.' 
+            : 'Examinee Personal Details section is now HIDDEN on the result page.'
+    ]);
+    exit;
+}
+
 // ─── 2. Tables & Examinee Data Management ─────────────────────
 if ($action === 'stats') {
     header('Content-Type: application/json');
